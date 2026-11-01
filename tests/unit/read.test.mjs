@@ -143,6 +143,41 @@ test('empty dynamics and unauthenticated follow feed are distinct', async () => 
   });
 });
 
+test('dynamics wrap upstream page cursors and reject raw or cross-scope offsets', async () => {
+  await mockFetch({ '/x/polymer/web-dynamic/v1/feed/space': (url) => ({ code: 0, data:
+    url.searchParams.get('offset') === 'next-page'
+      ? { items: [{ id_str: '2' }], has_more: false }
+      : { items: [{ id_str: '1' }], has_more: true, offset: 'next-page' },
+  }) }, async (calls) => {
+    const first = await listDynamics({ mid: '123', jar: jar() });
+    assert.ok(first.nextOffset.startsWith('dsh:'));
+    assert.deepEqual(JSON.parse(Buffer.from(first.nextOffset.slice(4), 'base64url').toString()), { scope: 'space:123', upstream: 'next-page', skip: 0 });
+    const second = await listDynamics({ mid: '123', offset: first.nextOffset, jar: jar() });
+    assert.equal(second.items[0].dynamicId, '2');
+    assert.equal(second.nextOffset, null);
+    const before = calls.length;
+    for (const offset of ['next-page', 'dsh:invalid']) {
+      await assert.rejects(listDynamics({ mid: '123', offset, jar: jar() }), { code: 'INVALID_ARGUMENT' });
+    }
+    await assert.rejects(listDynamics({ mid: '456', offset: first.nextOffset, jar: jar() }), { code: 'INVALID_ARGUMENT' });
+    assert.equal(calls.length, before);
+  });
+});
+
+test('following feed cursor cannot be reused by another account or a user feed', async () => {
+  let mid = 123;
+  await mockFetch({
+    '/x/web-interface/nav': () => ({ code: 0, data: { isLogin: true, mid } }),
+    '/x/polymer/web-dynamic/v1/feed/all': { code: 0, data: { items: [{ id_str: '1' }], has_more: true, offset: 'next' } },
+  }, async (calls) => {
+    const first = await listDynamics({ jar: jar() });
+    mid = 456;
+    await assert.rejects(listDynamics({ offset: first.nextOffset, jar: jar() }), { code: 'INVALID_ARGUMENT' });
+    await assert.rejects(listDynamics({ mid: '123', offset: first.nextOffset, jar: jar() }), { code: 'INVALID_ARGUMENT' });
+    assert.equal(calls.filter(call => call.url.pathname.includes('/feed/')).length, 1);
+  });
+});
+
 test('profile takes relation counts from stat and optional archive count from search', async () => {
   await mockFetch({
     '/x/space/wbi/acc/info': { code: 0, data: { mid: 123, name: 'UP', follower: 999 } },

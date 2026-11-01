@@ -60,3 +60,13 @@
 动态分页不是平台快照。pageSize 小于上游批次时，游标保存原 offset 和已消费条数，下一次重读该批次；源列表新增或删除可能造成漂移，需要按 dynamicId 去重。大于上游批次时只返回本批次，不自动跨页补齐。文本缺失、删除或权限限制的动态不会凭图片补造文字，未接 OCR/ASR。转发文本与视频字段投影有单测，真实转发样本尚未专门验收；不能将合成测试标为真实转发通过。
 
 既有字幕截断、首次创建凭据目录、写操作超时语义、故事板覆盖范围等问题未在这轮只读扩展中修改。Cookie 自动刷新、私信、关注列表及发布类能力为 `unsupported`。本轮交付不代表完整 B站能力，也不代表宿主集成验收完成。
+
+## 条件验收后的两项修复（2026-11-01）
+
+评论楼中楼补取现在最多 5 次，只对最先遇到的预览不足条目执行；预算耗尽后保留其余评论已有预览。该预算不包含视频元信息、评论主列表、必要的 WBI 密钥读取或降级请求。真实命令 `BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot --page-size 20` 返回 ok、20 条、total=2234；单测用 20 条模拟评论确认只补取 5 次，后续预览保持，关闭 replies 时补取为 0 次。
+
+动态 nextOffset 只要非 null 就统一使用 `dsh:` 包装，包含 scope/upstream/skip。整批消费后 upstream 为上游下一页 offset、skip=0；批内续取仍保留原 upstream 和 skip。拒绝裸 offset，以及跨用户、跨关注账号或跨流类型的包装游标；已有裸游标需从第一页重新获取。scope 用于防止误用，不是游标签名或防篡改凭证。
+
+真实命令 `BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs dynamics` 默认返回 ok、20 条和 `dsh:` 游标。另对 mid=3546637928499654 默认分页真实调用返回 13 条，解码确认 scope 正确、skip=0、upstream 非空；将解码后的裸 upstream 回传工具时明确返回 INVALID_ARGUMENT。
+
+修复后 `npm test` 为 24/24。没有新增依赖、执行账号写操作或重启 DSH，等待评审方快速回归。搜索 schema 的属性说明与空图片 imageChannel 状态未包含在本次两项修复中。
