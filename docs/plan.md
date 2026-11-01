@@ -16,7 +16,7 @@
 - [x] M8.1 ffmpeg 真抽帧（playurl → `-ss` 精确抽帧；宿主内 `source=ffmpeg`、误差 ≤100ms）
 - [ ] M8.1b 概览也用真帧（场景检测）+ `blurdetect` 挑最清晰帧（当前概览仍用故事板九宫格）
 - [x] M8.2a 硬字幕带抽取（ffmpeg 裁底部 + 竖拼长图；BV1pTx76QE8J 实测 12 行可读）
-- [ ] M8.2b OCR 识别（引擎选型后接入，输出标 `origin: ocr`）
+- [x] M8.2b OCR 识别（Windows 自带 OCR，零安装；接进 extract，仅无平台字幕时跑）
 - [ ] M8.3 ASR 兜底（本地转写 → `origin: asr`，远程需单独授权）
 
 ## v1 工具（18）

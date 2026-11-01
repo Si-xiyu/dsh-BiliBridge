@@ -136,25 +136,34 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   `fallbackReason`；精度不再写死，故事板按 `index` 中位间距算 `maxErrorMs`；补帧目标超出有效格数时标 `reused`。
 - 分 P 不存在时**报错**而不是静默用第 1 个分 P（`evidence.mjs` / `extract.mjs`）。
 
-### 5.3 媒体层 M8.2a：硬字幕带抽取
+### 5.3 媒体层 M8.2：硬字幕 OCR（已接入）
 
-- 新增 `lib/media/ocr.mjs`：`planSamples` 均匀规划采样点（数量夹在 2–24，两端留白），
-  `buildSubtitleStrip` 按时间点逐个 `-ss` 抽帧并裁掉底部以外区域（默认保留底部 22%），
-  用 sharp 竖拼成一张长图，左侧标注 `mm:ss`。
-- 单点抽帧失败不致命：整条字幕带是抽样证据，少一行好过整条链路失败。
-- **只做取图和拼图，不做识别**：识别引擎由调用方接入，选型不影响这条管线。
-- 验收（`node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22`）：1080P、12/12 采样成功、
-  输出 1368×1884 / 566KB，每行中英双字幕肉眼完全可读。
+- 新增 `lib/media/ocr.mjs`：
+  - `planSamples` 均匀规划采样点（2–24 个，两端留白，**用当前分 P 时长**）。
+  - `buildSubtitleStrip` 按时间点逐个 `-ss` 抽帧，**只裁底部字幕带**（默认底部 22%），
+    再用 sharp 竖拼成一张长图（长图只给人工调试看，**不进工具返回值、不当图片附件**）。
+  - `recognizeImageDir` / `buildSubtitleTranscript`：调 **Windows 自带 OCR**（`Windows.Media.Ocr`，
+    经 `lib/media/win-ocr.ps1`），**零安装**，本机语言 `zh-Hans-CN`。
+  - 每条结果统一 `{ atMs, text, region: 'subtitle-band', source: 'ocr' }`；连续重复的字幕行合并，
+    保留最早时间并记 `endAtMs` / `hits`。
+- 接入位置：`bilibili_extract` 在**没有平台字幕**时自动跑（`include.ocr=false` 可关），
+  结果在 `data.ocr`；有平台字幕就完全不跑，避免重复劳动。
+- 抽样必须如实：返回 `plannedSamples` / `extractedSamples` / `failedSamples`，
+  有缺口时 `status=partial`（不是 ok）；非 Windows 平台标 `unsupported` 而不是“失败”。
+- 验收（`node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22`）：1080P、12 点抽 12 成、
+  识别 11 行；中文可读，英文有错字（`lt's ealled` 这类），所以 OCR 只作补充证据。
+- 评审反馈已修：多 P 用错时长、越界时间点、抽样缺口被报成成功、临时文件并发冲突、
+  非 Windows 被报成失败。
 
 
 ## 6. 还没做的（按顺序）
 
-1. **M8.2 硬字幕 OCR**：**抽取已做**（`lib/media/ocr.mjs` + `tests/manual-ocr.mjs`，实测 12 行字幕带清晰可读）；
-   **识别引擎未接** —— 需要先定 Tesseract 还是 RapidOCR，接入后输出要标 `origin: ocr`。
-2. **M8.3 ASR 兜底**：音频流 → 16k wav → 本地转写，标 `origin: asr`；远程转写需单独授权。
-3. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
-4. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新重试、字幕 800 条续取、二阶段强制（`gaps` 字段）。
-5. **画质**：未登录只有 480P；1080P 需要登录 + `fourk`。OCR 阶段尤其需要高清帧。
+1. **M8.3 ASR**：音频流 → 16k wav → 转写 → 时间轴，标 `source: 'asr'`。
+   已探明本机有 SAPI `zh-CN` 引擎（零安装，质量一般）与 `lib/media/sapi-asr.ps1` 探针；
+   尚未接入证据链，也还没决定用 SAPI 还是 whisper.cpp / sherpa-onnx。
+2. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
+3. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新重试、字幕 800 条续取、二阶段强制（`gaps` 字段）。
+4. **画质**：未登录只有 480P；1080P 需要登录 + `fourk`——OCR 的识别质量直接受它影响。
 
 ## 7. 环境注意事项
 

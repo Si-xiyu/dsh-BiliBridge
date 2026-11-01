@@ -20,7 +20,7 @@
 | bilibili_favorites_list | verified（历史） | /x/v3/fav/folder/created/list-all；/x/v3/fav/resource/list | 历史 DSH 验收 |
 | bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
 | bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
-| bilibili_extract | limited | view；/x/player/wbi/v2；/x/v2/reply；/x/player/videoshot；comment.bilibili.com/{cid}.xml；上游字幕/图片地址 | 历史宿主图片验收；WBI 修复宿主待重启；800 条字幕截断、无续取为既有问题 |
+| bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；/x/v2/reply；/x/player/videoshot；comment.bilibili.com/{cid}.xml；无平台字幕时 `/x/player/wbi/playurl` + Windows.Media.Ocr | 字幕 190 cues 覆盖 100%、弹幕、评论、封面+九宫格、`imageAttached=true` 均已在宿主内实测；无字幕视频走 OCR（`data.ocr`，带 atMs/region/source，抽样缺口标 partial）；长视频字幕 800 条截断仍无续取 |
 | bilibili_inspect | verified（宿主内）；故事板降级 limited | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot | 宿主内实测：`source=ffmpeg`、`accuracy=exact`、`maxErrorMs=100`、480P、`imageAttached=true`。未登录只有 480P；ffmpeg 缺失时自动降级故事板并返回真实 `maxErrorMs`（实测 3000ms / 格间距 6000ms） |
 | bilibili_search | verified（独立进程） | /x/web-interface/wbi/search/type | 视频和用户搜索均 20 条；真实用户空结果通过；未重启宿主 |
 | bilibili_comments | verified（独立进程）；WBI 降级 limited | view → /x/v2/reply；缺少预览时 /x/v2/reply/reply；必要时 /x/v2/reply/wbi/main | 热门 20 条及楼中楼；最新第二页 3 条。真实调用未触发 WBI 降级，降级只做模拟验证且只支持第一页 |
