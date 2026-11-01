@@ -32,6 +32,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 | 数据目录 | `%USERPROFILE%\.dsh\bilibili`（可用 `BILI_DATA_DIR` 覆盖） |
 | npm 依赖 | `sharp@0.35.5`、`qrcode@1.5.4`（锁定在 `package-lock.json`） |
 | 外部依赖 | **ffmpeg 9.0.2**（gyan essentials 静态包，`D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe`） |
+| ASR 运行时 | **faster-whisper 1.2.1**（Python 3.12 venv：`D:\tools\asr\.venv`，模型 `D:\tools\asr\models`，默认 `small`） |
 | ffmpeg 配置 | `%USERPROFILE%\.dsh\bilibili\config.json` 的 `ffmpegPath` + `ffmpegCaFile`；也可用 `FFMPEG_PATH` / `FFMPEG_CA_FILE` |
 | CA 证书 | `%USERPROFILE%\.dsh\bilibili\cacert.pem`（Mozilla 根证书，来自 certifi） |
 | B站登录态 | **已登录**：`四夕羽_`（mid 215407733，level 6，VIP）；凭据 `credentials.json` 的 ACL 已收紧为仅 `VERDANT\16832:(F)` |
@@ -136,29 +137,34 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   `fallbackReason`；精度不再写死，故事板按 `index` 中位间距算 `maxErrorMs`；补帧目标超出有效格数时标 `reused`。
 - 分 P 不存在时**报错**而不是静默用第 1 个分 P（`evidence.mjs` / `extract.mjs`）。
 
-### 5.3 媒体层 M8.2：硬字幕 OCR（已接入）
+### 5.3 字幕字段：platform → ASR →（可选）OCR
 
-- 新增 `lib/media/ocr.mjs`：
-  - `planSamples` 均匀规划采样点（2–24 个，两端留白，**用当前分 P 时长**）。
-  - `buildSubtitleStrip` 按时间点逐个 `-ss` 抽帧，**只裁底部字幕带**（默认底部 22%），
-    再用 sharp 竖拼成一张长图（长图只给人工调试看，**不进工具返回值、不当图片附件**）。
-  - `recognizeImageDir` / `buildSubtitleTranscript`：调 **Windows 自带 OCR**（`Windows.Media.Ocr`，
-    经 `lib/media/win-ocr.ps1`），**零安装**，本机语言 `zh-Hans-CN`。
-  - 每条结果统一 `{ atMs, text, region: 'subtitle-band', source: 'ocr' }`；连续重复的字幕行合并，
-    保留最早时间并记 `endAtMs` / `hits`。
-- 接入位置：`bilibili_extract` 在**没有平台字幕**时自动跑（`include.ocr=false` 可关），
-  结果在 `data.ocr`；有平台字幕就完全不跑，避免重复劳动。
-- 抽样必须如实：返回 `plannedSamples` / `extractedSamples` / `failedSamples`，
-  有缺口时 `status=partial`（不是 ok）；非 Windows 平台标 `unsupported` 而不是“失败”。
-- 验收（`node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22`）：1080P、12 点抽 12 成、
-  识别 11 行；中文可读，英文有错字（`lt's ealled` 这类），所以 OCR 只作补充证据。
-- 评审反馈已修：多 P 用错时长、越界时间点、抽样缺口被报成成功、临时文件并发冲突、
-  非 Windows 被报成失败。
+**定位**：字幕只是信息源之一；ASR 覆盖绝大多数视频，OCR 是可选的补充。
 
+- **`subtitleSource` 参数**（`bilibili_extract`）：`auto`（默认，平台→ASR）/ `platform` / `asr` / `ocr` / `none`。
+  Agent 可以先用 `asr`，效果差再以 `ocr` 复调一次。
+- **统一字段**：`data.transcript[]` 每条带 `origin: 'platform' | 'asr' | 'ocr'`；
+  `data.subtitleSource` / `data.subtitleStatus` / `data.attempts[]`（每路试过什么、为什么失败）。
+- **状态语义**：`ok` / `partial`（截断） / `empty`（只要平台字幕而它为空） / `insufficient`（三路都没有可用文本）。
+  `insufficient` 不是错误，是"这个视频确实没有可读文本"，交给 Stage 2 判断。
+
+### 5.4 ASR（主线，M8.3）
+
+- `lib/media/asr_worker.py`：faster-whisper，CPU `int8`，默认 `small`，`vad_filter`，中文加简体 `initial_prompt`。
+  **绕开 PyAV 解码**：用标准库 `wave` 读 16k/单声道/PCM16 成 numpy 数组再喂模型（`av 19 + faster-whisper 1.2.1` 的
+  `metadata_errors` 参数不兼容，直接调库会 TypeError）。
+- `lib/media/asr.mjs`：运行时解析（`BILI_ASR_PYTHON` → `config.json#asrPython` → `D:\tools\asr\.venv`）、
+  超时/取消/子进程清理、`judgeTranscript` 置信度判定（`avg_logprob` / 低置信占比）。
+- 接入 `buildEvidence`：没有平台字幕时自动转写；结果进统一 `transcript`，`origin: 'asr'`。
+- 实测（`BV1KDNA6eEgr`，90s 音频）：`small` 55.7s，48 段，`avgLogprob=-0.20`，
+  文本质量可用（"我们中出了一个叛徒的后门 / 花费订阅的 Cloud Code"）。
+- **OCR 降级为可选**：默认不跑；只有 `subtitleSource='ocr'` 或 `include.ocr=true` 才跑，
+  引擎仍是 Windows 自带 `Windows.Media.Ocr`（零安装），不再投入底部字幕带的复杂优化。
 
 ## 6. 还没做的（按顺序）
 
-1. **M8.3 ASR**：音频流 → 16k wav → 转写 → 时间轴，标 `source: 'asr'`。
+1. **长视频 ASR**：`small` 在本机约 0.3–0.6× 实时（90s 音频 ≈ 56s）。当前用 `limits.asrMaxSeconds`（默认 900s）截断并标 `partial`，
+   分块续取 / 后台任务尚未做——这是已知风险，暂不优化。
    已探明本机有 SAPI `zh-CN` 引擎（零安装，质量一般）与 `lib/media/sapi-asr.ps1` 探针；
    尚未接入证据链，也还没决定用 SAPI 还是 whisper.cpp / sherpa-onnx。
 2. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
