@@ -1,0 +1,36 @@
+{
+  "name": "dsh-bilibili-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "bin": {
+    "bili": "bin/bili.mjs"
+  },
+  "description": "DSH plugin: Bilibili account tools for the main DeepSeek agent",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.mjs"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0"
+  },
+  "engines": {
+    "dsh": ">=0.1.0-rc.6 <0.3.0",
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "bin",
+    "cordis.patch.yml",
+    "README.md"
+  ]
+}

@@ -1,0 +1,4 @@
+node_modules/
+.bili-data/
+*.log
+.DS_Store

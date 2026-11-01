@@ -1,0 +1,4 @@
+# dsh-bilibili-bridge: insert one tool plugin row over the profile root.
+- insert:
+    - id: bilibili
+      name: 'dsh-bilibili-bridge'
