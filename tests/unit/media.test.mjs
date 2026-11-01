@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { CookieJar } from '../../lib/bili/http.mjs';
 import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
 import { medianGapSeconds } from '../../lib/media/inspect.mjs';
+import { planSamples } from '../../lib/media/ocr.mjs';
 import { resetFfmpegCache, resolveToolchain } from '../../lib/media/ffmpeg.mjs';
 
 const nav = {
@@ -105,6 +106,19 @@ test('故事板格间距用中位数，用来如实报告精度', () => {
   assert.equal(medianGapSeconds([0]), null);
   assert.equal(medianGapSeconds([]), null);
   assert.equal(medianGapSeconds(undefined), null);
+});
+
+test('字幕带采样点：数量夹在 2–24、均匀、落在片内', () => {
+  const samples = planSamples({ durationMs: 600_000, count: 12 });
+  assert.equal(samples.length, 12);
+  for (let i = 1; i < samples.length; i += 1) assert.ok(samples[i] > samples[i - 1], '采样点必须递增');
+  assert.ok(samples[0] >= 0 && samples[0] < 60_000, '首个采样点应靠近片头但留白');
+  assert.ok(samples.at(-1) > 540_000 && samples.at(-1) <= 600_000, '末个采样点应靠近片尾');
+
+  assert.equal(planSamples({ durationMs: 600_000, count: 1 }).length, 2, '太少会被抬到 2');
+  assert.equal(planSamples({ durationMs: 600_000, count: 99 }).length, 24, '太多会被压到 24');
+  assert.throws(() => planSamples({ durationMs: 0 }), (error) => error.code === 'INVALID_ARGUMENT');
+  assert.throws(() => planSamples({ durationMs: NaN }), (error) => error.code === 'INVALID_ARGUMENT');
 });
 
 test('ffmpeg 不存在时抛 DEPENDENCY_MISSING，而不是静默降级', async () => {
