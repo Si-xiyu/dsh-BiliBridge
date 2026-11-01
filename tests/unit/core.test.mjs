@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fromBiliCode } from '../../lib/bili/errors.mjs';
+import { assertMediaUrl, DEFAULT_REFERER, headersFor, USER_AGENT } from '../../lib/bili/http.mjs';
 import { mixinKey, signQuery } from '../../lib/bili/wbi.mjs';
 import { parseDanmakuXml, sampleDanmaku } from '../../lib/media/danmaku.mjs';
 import { normalizeTargets } from '../../lib/media/inspect.mjs';
@@ -66,4 +67,27 @@ test('业务码映射到稳定错误码', () => {
   assert.equal(fromBiliCode(-352).retryable, true);
   assert.equal(fromBiliCode(-404).code, 'NOT_FOUND');
   assert.equal(fromBiliCode(-9999).code, 'UPSTREAM_ERROR');
+});
+
+test('媒体 URL 白名单：只放行 B站 域名，挡住内网与外部地址', () => {
+  assert.equal(assertMediaUrl('//i0.hdslb.com/bfs/x.jpg').hostname, 'i0.hdslb.com');
+  assert.equal(assertMediaUrl('https://upos-sz-mirror.bilivideo.com/a.m4s').protocol, 'https:');
+  for (const bad of [
+    'https://127.0.0.1/x',
+    'https://localhost/x',
+    'http://192.168.1.5/x',
+    'http://169.254.169.254/latest/meta-data',
+    'https://evil.example.com/x',
+    'file:///etc/passwd',
+  ]) {
+    assert.throws(() => assertMediaUrl(bad), (error) => error.code === 'INVALID_ARGUMENT', `应当拒绝 ${bad}`);
+  }
+});
+
+test('请求头统一：媒体请求带视频页 Referer', () => {
+  const headers = headersFor('https://www.bilibili.com/video/BV1xx411c7mD');
+  assert.equal(headers.referer, 'https://www.bilibili.com/video/BV1xx411c7mD');
+  assert.equal(headers['user-agent'], USER_AGENT);
+  assert.equal(headersFor().referer, DEFAULT_REFERER);
+  assert.match(USER_AGENT, /Windows NT/);
 });
