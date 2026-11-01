@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CookieJar } from '../../lib/bili/http.mjs';
 import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
-import { medianGapSeconds } from '../../lib/media/inspect.mjs';
-import { planSamples } from '../../lib/media/ocr.mjs';
+import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
+import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
 import { resetFfmpegCache, resolveToolchain } from '../../lib/media/ffmpeg.mjs';
 
 const nav = {
@@ -100,6 +100,17 @@ test('playurl 没有可用流时报 CONTENT_UNAVAILABLE，不返回空 URL', asy
   });
 });
 
+test('补帧时间点必须落在当前分 P 内', () => {
+  // 不给 durationMs 时不校验（老调用保持可用）
+  assert.equal(normalizeTargets({ timestampsMs: [999_999] }).length, 1);
+  // 给了就必须挡住越界：否则故事板会默默映射到最后一格
+  assert.throws(
+    () => normalizeTargets({ timestampsMs: [5000], durationMs: 3000 }),
+    (error) => error.code === 'INVALID_ARGUMENT' && /超出当前分 P/.test(error.message),
+  );
+  assert.equal(normalizeTargets({ timestampsMs: [3000], durationMs: 3000 }).length, 1, '边界值等于时长应允许');
+});
+
 test('故事板格间距用中位数，用来如实报告精度', () => {
   assert.equal(medianGapSeconds([0, 6, 12, 18, 24]), 6);
   assert.equal(medianGapSeconds([0, 8, 16, 25]), 8);
@@ -119,6 +130,28 @@ test('字幕带采样点：数量夹在 2–24、均匀、落在片内', () => {
   assert.equal(planSamples({ durationMs: 600_000, count: 99 }).length, 24, '太多会被压到 24');
   assert.throws(() => planSamples({ durationMs: 0 }), (error) => error.code === 'INVALID_ARGUMENT');
   assert.throws(() => planSamples({ durationMs: NaN }), (error) => error.code === 'INVALID_ARGUMENT');
+});
+
+test('OCR 文本清理：中文之间不保留空格，保持英文单词边界', () => {
+  assert.equal(normalizeOcrText('这 被 称 为 枳 械 智 力'), '这被称为枳械智力');
+  assert.equal(normalizeOcrText('  中文   和 English 混排  '), '中文和 English 混排');
+  assert.equal(normalizeOcrText('lt\'s ealled mechanieal'), "lt's ealled mechanieal");
+  assert.equal(normalizeOcrText(null), '');
+});
+
+test('OCR 连续重复行合并：只保留最早时间，并记录命中次数与结束时间', () => {
+  const merged = mergeDuplicateOcrEntries([
+    { atMs: 1000, text: '同一句', region: 'subtitle-band', source: 'ocr' },
+    { atMs: 3000, text: '同一句', region: 'subtitle-band', source: 'ocr' },
+    { atMs: 5000, text: '换了一句', region: 'subtitle-band', source: 'ocr' },
+    { atMs: 7000, text: '同一句', region: 'subtitle-band', source: 'ocr' },
+  ]);
+  assert.equal(merged.length, 3, 'A/A/B/A 合并成 3 条（不跨行合并）');
+  assert.equal(merged[0].atMs, 1000);
+  assert.equal(merged[0].endAtMs, 3000);
+  assert.equal(merged[0].hits, 2);
+  assert.equal(merged[1].text, '换了一句');
+  assert.equal(merged[2].atMs, 7000);
 });
 
 test('ffmpeg 不存在时抛 DEPENDENCY_MISSING，而不是静默降级', async () => {
