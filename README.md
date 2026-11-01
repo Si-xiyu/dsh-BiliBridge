@@ -5,7 +5,7 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 ## 当前状态
 
 - 认证、HTTP/WBI、凭据持久化：已用真实账号验证（扫码登录、空间投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 14 个：已安装进 desktop profile，并在 DSH 内验证通过。
+- 工具层 18 个：原有 14 个已有宿主验收记录；新增搜索、评论、用户主页和动态已通过独立 Node 进程的真实只读验收，待评审方重启 DSH 验证可见性。
 - 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）与 Stage 2（故事板定向补帧，±1s）已实现；本机没有 ffmpeg，精确抽帧待补。
 - 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
 
@@ -22,6 +22,10 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 | `bilibili_video_like_set` | 点赞 |
 | `bilibili_extract` | Stage 1 证据包（文本 + 2 张图） |
 | `bilibili_inspect` | Stage 2 定向补帧 |
+| `bilibili_search` | 视频 / 用户搜索（WBI） |
+| `bilibili_comments` | 热门 / 最新评论与最多 3 条楼中楼 |
+| `bilibili_user_profile` | 用户主页、粉丝 / 关注数、可取得时的投稿数 |
+| `bilibili_dynamics` | 用户动态 / 当前账号关注动态 |
 
 三个写工具在代码层走 `tools/pre-execute` 的 `ask`，无人值守时由 DSH fail closed。
 
@@ -38,7 +42,7 @@ ln -sfn /Users/kairos/Code/agent/dsh-BiliBridge ~/.dsh/profiles/node_modules/dsh
 "dsh": { "profile": { "bundles": [..., "dsh-bilibili-bridge"] } }
 ```
 
-重启 DSH 后，新会话里应能看到 14 个 `bilibili_*` 工具。
+重启 DSH 后，新会话里应能看到 18 个 `bilibili_*` 工具。本轮没有重启宿主。
 
 ## 开发 CLI
 
@@ -51,7 +55,14 @@ BILI_DATA_DIR=./.bili-data node bin/bili.mjs watchlater
 node tests/manual-evidence.mjs BV1YLHu6zEDp
 node tests/manual-tools.mjs BV1YLHu6zEDp
 npm test
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs search "编程" --type video
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs search "影视飓风" --type user
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs profile 3546637928499654
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs dynamics --mid 3546637928499654
 ```
+
+只读工具的 endpoint、真实验收摘要与限制见 [能力矩阵](docs/capability-matrix.md)。手工脚本只输出分页信息和前两条样本；`--page` / `--page-size` 控制列表分页，动态用 `--offset` 续取，`--no-replies` 关闭楼中楼，`--anonymous` 验证无凭据状态。
 
 ## 约束
 
@@ -63,9 +74,9 @@ npm test
 ## 已知限制
 
 - 字幕必须走 WBI 签名的 `/x/player/wbi/v2`；不带签名的 `/x/player/v2` 会返回别的视频的 AI 字幕，不能使用。
-- 官方字幕也可能只有 1 条广告/占位文本，已按 `SUBTITLE_TRIVIAL` 丢弃。
-
-- B站 `player/v2` 的 AI 字幕列表会间歇性返回空，已加 3 次短重试，仍可能为空（返回 `empty`，不编造）。
+- 当前字幕代码没有旧的标题匹配、最小质量过滤或短重试；长字幕默认只返回前 800 条，尚无续取入口。
+- 评论常规分页使用 `/x/v2/reply`。只有 -400 或明确要求 WBI 时才降级；WBI 降级仅支持第一页，不把风控错误当作降级理由。
+- 动态 pageSize 是单次上限（1–50）；较小分页用不透明游标保留同一上游批次的尾部。不是快照，源列表变化时可能重复或漂移，调用方宜按 dynamicId 去重。纯图片动态没有文本时返回空 text，不做 OCR。
 - 故事板九宫格是“概览”，不是精确抽帧；`bilibili_inspect` 会返回 `req/got` 与 `accuracy`。
 - 空间接口目前 8/8 成功，但 B站风控随时可能变化；412 会作为 `RATE_LIMITED` 返回。
 - 未登录时 `nav` 返回 `-101`，HTTP 层用 `acceptCodes` 处理。

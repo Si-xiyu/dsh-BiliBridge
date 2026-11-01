@@ -1,0 +1,62 @@
+# 能力矩阵与只读验收
+
+本轮验收日期：2026-11-01（Asia/Shanghai），Node v25.8.0。没有新增依赖，没有执行账号写操作，没有重启 DSH。新增四个工具通过注册函数和现有认证层在独立 Node 进程中调用；DSH 重启后的可见性、主模型调用仍待评审方验收。
+
+状态含义：`implemented` 为代码具备但未真实验收；`verified` 为有指定环境中的真实调用证据；`limited` 为可用但有明确功能限制；`unsupported` 为未实现。历史验收来自 docs/handoff.md，不能当作本轮重新验证。
+
+所有路径默认属于 `https://api.bilibili.com`；扫码路径属于 `https://passport.bilibili.com`。
+
+| 工具 | 状态 | 实际 endpoint | 验证证据与边界 |
+| --- | --- | --- | --- |
+| bilibili_auth_status | verified（历史） | /x/web-interface/nav | 历史真实登录态验收 |
+| bilibili_auth_begin | verified（历史） | /x/passport-login/web/qrcode/generate | 历史扫码验收，本轮未生成二维码 |
+| bilibili_auth_poll | verified（历史） | /x/passport-login/web/qrcode/poll；nav；/x/frontend/finger/spi | 历史保存登录态验收 |
+| bilibili_auth_logout | implemented | 本地清凭据 | 本轮未执行；不撤销远端会话 |
+| bilibili_me | verified（历史） | /x/web-interface/nav | 历史 DSH 验收 |
+| bilibili_video | verified（历史） | /x/web-interface/view | 本轮评论解析 aid 也实际调用 |
+| bilibili_user_videos | verified（历史） | /x/space/wbi/arc/search | 本轮主页投稿计数也实际调用 |
+| bilibili_watch_later_list | verified（历史） | /x/v2/history/toview | 历史 DSH 验收 |
+| bilibili_watch_later_set | implemented | /x/v2/history/toview/add 或 del | 仅历史 dry-run，真实写入未验收 |
+| bilibili_favorites_list | verified（历史） | /x/v3/fav/folder/created/list-all；/x/v3/fav/resource/list | 历史 DSH 验收 |
+| bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
+| bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
+| bilibili_extract | limited | view；/x/player/wbi/v2；/x/v2/reply；/x/player/videoshot；comment.bilibili.com/{cid}.xml；上游字幕/图片地址 | 历史宿主图片验收；WBI 修复宿主待重启；800 条字幕截断、无续取为既有问题 |
+| bilibili_inspect | limited | view；/x/player/videoshot；上游图片地址 | 只有故事板，第一张雪碧图限制仍在，无 FFmpeg |
+| bilibili_search | verified（独立进程） | /x/web-interface/wbi/search/type | 视频和用户搜索均 20 条；真实用户空结果通过；未重启宿主 |
+| bilibili_comments | verified（独立进程）；WBI 降级 limited | view → /x/v2/reply；缺少预览时 /x/v2/reply/reply；必要时 /x/v2/reply/wbi/main | 热门 20 条及楼中楼；最新第二页 3 条。真实调用未触发 WBI 降级，降级只做模拟验证且只支持第一页 |
+| bilibili_user_profile | verified（独立进程） | /x/space/wbi/acc/info → /x/relation/stat → /x/space/wbi/arc/search | 真实主页、粉丝、关注、2193 条投稿计数返回；空间风控直接抛错，无重试循环 |
+| bilibili_dynamics | verified（独立进程） | /x/polymer/web-dynamic/v1/feed/space 或 /feed/all | 用户流 13 条；关注流 20 条；2+2 小分页不重叠；无凭据关注流明确 AUTH_REQUIRED |
+
+搜索、空间、动态会按需调用 `/x/frontend/finger/spi` 补 buvid3；WBI 密钥取自 nav。全部新增请求通过现有 `request`，没有加入写入 endpoint 或模型服务。
+
+## 指定真实验收命令
+
+前五条均以 `BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs` 执行。只记录必要摘要，不保存整包响应或账号凭据。
+
+| 参数 | 本轮真实结果 |
+| --- | --- |
+| search "编程" --type video | ok；total=1000；20 条；hasMore=true；标题高亮标签已剥离 |
+| search "影视飓风" --type user | ok；total=332；20 条；首个用户 mid=946974；头像、签名、等级正常 |
+| comments BV1VZWc6dECG --sort hot | ok；total=2233；20 条；实际 endpoint=/x/v2/reply；楼中楼最多 3 条，包含字符串 id 和 ISO 时间 |
+| profile 3546637928499654 | ok；fans=60123；following=310；archiveCount=2193 |
+| dynamics --mid 3546637928499654 | ok；13 条；hasMore=true；视频动态含 bvid/title，纯图片条目缺少正文时 text="" |
+
+补充真实验收：
+
+| 命令 / 场景 | 结果 |
+| --- | --- |
+| search "BiliBridgeNoMatch20261101c90e7f32a54d" --type user | ok；total=0；items=[]；hasMore=false |
+| 相同关键词 --type video | 上游实际返回 20 条、total=1000；未伪造成空结果。视频搜索可能回退推荐，不能用不常见词保证空结果 |
+| node tests/manual-read.mjs dynamics --anonymous | 退出码 1；AUTH_REQUIRED；不读取真实凭据 |
+| dynamics（省略 mid） | ok；当前账号关注流 20 条；返回 nextOffset |
+| comments BV1VZWc6dECG --sort new --page 2 --page-size 3 --no-replies | ok；page=2；3 条；replies=[]；total=2233 |
+| 同进程连续调用 dynamics，mid=3546637928499654，pageSize=2，再传 nextOffset | 两页各 2 条，无 dynamicId 重叠，第二页仍可续取 |
+| npm test | 21/21 通过；单测使用模拟网络，与上述真实调用分别记录 |
+
+## 限制与未验证项
+
+没有故意触发真实 412/-352。单测验证 HTTP 412、业务码 -352/-412/-101 原样映射并阻止空成功，真实风控出现时的恢复时间未测；本轮未加自动重试。评论 WBI 降级没有真实触发样本，只验证请求签名、错误选择和第一页限制，无法声称完整页码降级。
+
+动态分页不是平台快照。pageSize 小于上游批次时，游标保存原 offset 和已消费条数，下一次重读该批次；源列表新增或删除可能造成漂移，需要按 dynamicId 去重。大于上游批次时只返回本批次，不自动跨页补齐。文本缺失、删除或权限限制的动态不会凭图片补造文字，未接 OCR/ASR。转发文本与视频字段投影有单测，真实转发样本尚未专门验收；不能将合成测试标为真实转发通过。
+
+既有字幕截断、首次创建凭据目录、写操作超时语义、故事板覆盖范围等问题未在这轮只读扩展中修改。Cookie 自动刷新、私信、关注列表及发布类能力为 `unsupported`。本轮交付不代表完整 B站能力，也不代表宿主集成验收完成。
