@@ -13,6 +13,25 @@
 | 当前模型路由 | deepseek-official / deepseek-flash |
 | 图像输入 | 已用内置 `read_image` 实测：图片进入主 Agent 上下文并可描述 |
 
+## 2026-11-02：迁移到 Windows
+
+| 项 | 值 |
+| --- | --- |
+| 桌面版 runtime | `@deepseek-ai/dsh-desktop-runtime@0.2.1-rc.5`（asar 内 `dsh/package.json` 读出） |
+| Node | v24.16.0 |
+| 系统 | Windows 11（NT 10.0.26200），x64 |
+| 仓库 | `E:\Code\dsh-BiliBridge` |
+| profile | `%USERPROFILE%\.dsh\profiles\desktop`（pnpm workspace，`bundles` 里含 `dshmarket`） |
+| 模型路由 | `deepseek-account / deepseek-flash`（profile 的 `agent-default-model`） |
+| 运行时依赖 | `sharp@0.35.5`、`qrcode@1.5.4`，已 `npm install` |
+
+平台相关差异（已在代码里处理）：
+
+- 凭据权限：NTFS 上 `chmod 0600` 只切只读位 → 改为 `icacls /inheritance:r /grant:r <当前用户>:(F)`，失败时只告警不阻断。
+- 临时目录：`/tmp` 在 Windows 落到当前盘根 → 统一用 `os.tmpdir()`。
+- 媒体请求：图片/字幕/弹幕/故事板原先各用一套请求头或无 Referer → 统一走 `http.mjs`（一套 UA/Referer + 域名白名单）。
+- sharp 渲染 SVG 文字依赖可写的 fontconfig 缓存；受限进程里会打印 `No writable cache directories`，宿主内正常。
+
 ## 宿主服务（目标版本）
 
 - 有：`tools`、`attachments`（`saveImage`）、`agents`（`create/resume` + `followup`）、`approval`、`llm`（`resolveModelInfo`）

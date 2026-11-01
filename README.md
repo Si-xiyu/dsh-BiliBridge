@@ -4,9 +4,11 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 
 ## 当前状态
 
-- 认证、HTTP/WBI、凭据持久化：已用真实账号验证（扫码登录、空间投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 18 个：原有 14 个已有宿主验收记录；新增搜索、评论、用户主页和动态已通过独立 Node 进程的真实只读验收，待评审方重启 DSH 验证可见性。
-- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）与 Stage 2（故事板定向补帧，±1s）已实现；本机没有 ffmpeg，精确抽帧待补。
+完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
+
+- 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
+- 工具层 18 个：14 个有宿主验收记录，搜索/评论/用户主页/动态有独立进程真实验收；**本机（Windows）尚未加载进宿主**。
+- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）与 Stage 2（故事板定向补帧）可用；真抽帧需要 ffmpeg，正在补。
 - 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
 
 ## 工具
@@ -31,43 +33,51 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 
 ## 安装（开发版）
 
-```bash
-ln -sfn /Users/kairos/Code/agent/dsh-BiliBridge ~/.dsh/profiles/node_modules/dsh-bilibili-bridge
+Windows（当前环境）：
+
+```powershell
+# 1) 把插件挂进 profile 的 node_modules
+#    推荐在 profile 里用 file: 依赖，让 pnpm 建链接；也可手工建目录联接：
+cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridge" "E:\Code\dsh-BiliBridge"
 ```
 
-在 `~/.dsh/profiles/desktop/package.json` 里：
+在 `%USERPROFILE%\.dsh\profiles\desktop\package.json` 里：
 
 ```json
-"dependencies": { "dsh-bilibili-bridge": "file:/Users/kairos/Code/agent/dsh-BiliBridge" },
+"dependencies": { "dsh-bilibili-bridge": "file:E:/Code/dsh-BiliBridge" },
 "dsh": { "profile": { "bundles": [..., "dsh-bilibili-bridge"] } }
 ```
 
-重启 DSH 后，新会话里应能看到 18 个 `bilibili_*` 工具。本轮没有重启宿主。
+macOS/Linux：把上面的 `mklink /J` 换成 `ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`。
+
+重启 DSH 后，新会话里应能看到 18 个 `bilibili_*` 工具。**插件没有 HMR，改 `lib/` 必须重启宿主。**
 
 ## 开发 CLI
 
-```bash
-BILI_DATA_DIR=./.bili-data node bin/bili.mjs status
-BILI_DATA_DIR=./.bili-data node bin/bili.mjs qr        # 生成二维码 PNG
-BILI_DATA_DIR=./.bili-data node bin/bili.mjs poll 30   # 轮询
-BILI_DATA_DIR=./.bili-data node bin/bili.mjs latest
-BILI_DATA_DIR=./.bili-data node bin/bili.mjs watchlater
+```powershell
+$env:BILI_DATA_DIR=".\.bili-data"
+node bin/bili.mjs status
+node bin/bili.mjs qr          # 生成二维码 PNG
+node bin/bili.mjs poll 30     # 轮询
+node bin/bili.mjs latest      # 我最新投稿 + 播放量
+
+npm run test:single           # 单进程跑单测（受限沙箱里 npm test 的子进程会 EPERM）
 node tests/manual-evidence.mjs BV1YLHu6zEDp
-node tests/manual-tools.mjs BV1YLHu6zEDp
-npm test
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs search "编程" --type video
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs search "影视飓风" --type user
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs profile 3546637928499654
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs dynamics --mid 3546637928499654
+node tests/manual-read.mjs search "编程" --type video
+node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 ```
+
+macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 
 只读工具的 endpoint、真实验收摘要与限制见 [能力矩阵](docs/capability-matrix.md)。手工脚本只输出分页信息和前两条样本；`--page` / `--page-size` 控制列表分页，动态用 `--offset` 续取，`--no-replies` 关闭楼中楼，`--anonymous` 验证无凭据状态。
 
+抓包探针需要 `playwright-core`（未列入依赖）：`npm i -D playwright-core`，或用 `PLAYWRIGHT_CORE` 指向它的入口文件。
+
 ## 约束
 
-- 唯一推理模型是 DSH 主 Agent；插件不调用任何 LLM/VLM。
-- 凭据只落在 0600 文件；工具返回值、日志、报告不出现 Cookie / CSRF / 刷新凭据。
+- 唯一推理模型是 DSH 主 Agent；插件不调用任何 LLM/VLM。OCR 只做文字识别、ASR 只做语音转写，两者都只是证据来源，输出必须标 `origin`。
+- 凭据只允许当前用户访问（POSIX 0600；Windows 用 icacls 关继承、只授权当前用户）；工具返回值、日志、报告不出现 Cookie / CSRF / 刷新凭据。
+- 所有 B站请求（含图片/字幕/弹幕/DASH 流）走 `lib/bili/http.mjs`：一套 UA/Referer，域名白名单，禁止内网地址。
 - 不实现自动刷视频、人格、主动分享。
 - 故事板精度约 ±1s；读小字需要 ffmpeg。
 

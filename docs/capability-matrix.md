@@ -70,3 +70,17 @@
 真实命令 `BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-read.mjs dynamics` 默认返回 ok、20 条和 `dsh:` 游标。另对 mid=3546637928499654 默认分页真实调用返回 13 条，解码确认 scope 正确、skip=0、upstream 非空；将解码后的裸 upstream 回传工具时明确返回 INVALID_ARGUMENT。
 
 修复后 `npm test` 为 24/24。没有新增依赖、执行账号写操作或重启 DSH，等待评审方快速回归。搜索 schema 的属性说明与空图片 imageChannel 状态未包含在本次两项修复中。
+
+## 2026-11-02 Windows 平台适配后的匿名回归
+
+环境：Windows 11 / Node 24.16.0 / `BILI_DATA_DIR` 指向仓库内临时目录，**未登录**。
+
+| 来源 | 命令 | 结果 |
+| --- | --- | --- |
+| 元数据 | `getVideo('BV1GJ411x7h7')` | ok，标题/时长 213s/cid 137649199 |
+| 字幕 | `getSubtitles(...)` | `empty`，tracks 0 —— **匿名下 wbi/v2 不给字幕轨，字幕列表需要登录** |
+| 弹幕 | `getDanmaku({cid, bvid})` | ok，1200 条，8 个 30s 桶 |
+| 故事板 | `getStoryboard(...)` | ok，10×10 网格，`index` 33 格有效 |
+| 概览图 | `buildOverview(...)` | ok，封面 651KB + 九宫格 89KB，0 warning |
+
+同一轮修复了媒体请求指纹：图片/字幕/弹幕/故事板现在都走 `lib/bili/http.mjs` 的 `fetchBuffer`，共用一套 UA/Referer，并加域名白名单（bilibili.com / hdslb.com / bilivideo.com / bilivideo.cn / szbdyd.com）与内网地址阻断。`npm run test:single` 24/24。

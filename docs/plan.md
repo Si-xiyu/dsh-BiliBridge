@@ -11,13 +11,17 @@
 - [x] M4 视频提取 Stage 1（字幕/弹幕/评论/封面/九宫格；DSH 内图片已附加）
 - [x] M5 定向补帧 Stage 2（故事板，±2s；DSH 内图片已附加）
 - [ ] M6 稍后观看摘要 + 原生提醒
-- [x] M7 部分：安装、文档、单元测试 6/6；打包发布未做
+- [x] M7 部分：安装、文档、单元测试 24/24；打包发布未做
+- [x] M8.0 Windows 平台适配（请求指纹统一、凭据 ACL、跨平台路径；本机匿名回归通过）
+- [ ] M8.1 ffmpeg 真抽帧（playurl → `-ss` 精确抽帧、场景概览、blurdetect 选清晰帧）
+- [ ] M8.2 硬字幕 OCR（字幕带拼图 → 识别 → `origin: ocr`）
+- [ ] M8.3 ASR 兜底（本地转写 → `origin: asr`，远程需单独授权）
 
-## v1 工具（14）
+## v1 工具（18）
 
 auth_status / auth_begin / auth_poll / auth_logout / me / video / user_videos /
 watch_later_list / watch_later_set / favorites_list / favorite_set / video_like_set /
-extract / inspect
+extract / inspect / search / comments / user_profile / dynamics
 
 ## 已验证
 
