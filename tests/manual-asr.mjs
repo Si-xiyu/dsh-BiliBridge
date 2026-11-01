@@ -1,24 +1,20 @@
 /**
- * ASR 质量评估（会联网、会抽音频、会调用 Windows SAPI）。
+ * ASR 真实验收（会联网、抽音频、首次会下载模型）。
  *
  *   node tests/manual-asr.mjs BV1KDNA6eEgr 90
+ *   node tests/manual-asr.mjs BV1KDNA6eEgr 90 en
  *
- * 只抽前 N 秒音频，避免一次跑整片；输出识别到的句子与起始时间。
+ * 输出：运行时、模型、耗时、置信度、带时间戳的段落。
  */
-import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { currentJar } from '../lib/bili/auth.mjs';
 import { getVideo } from '../lib/bili/api.mjs';
 import { getPlayUrls } from '../lib/bili/playurl.mjs';
-import { extractAudio } from '../lib/media/ffmpeg.mjs';
+import { judgeTranscript, segmentsToEntries, transcribeUrl } from '../lib/media/asr.mjs';
 import { videoReferer } from '../lib/media/frames.mjs';
 
-const execFileAsync = promisify(execFile);
-const [bvid = 'BV1KDNA6eEgr', secondsArg = '90'] = process.argv.slice(2);
-const maxSeconds = Math.max(10, Math.min(600, Number(secondsArg) || 90));
+const [bvid = 'BV1KDNA6eEgr', secondsArg = '90', langArg] = process.argv.slice(2);
+const maxSeconds = Math.max(10, Math.min(1800, Number(secondsArg) || 90));
+const language = langArg || 'zh';
 
 const { jar, credentials } = await currentJar();
 console.log('login  :', credentials?.cookies?.SESSDATA ? '已登录' : '未登录');
@@ -27,37 +23,27 @@ const video = await getVideo(bvid, { jar });
 const cid = video.pages[0].cid;
 const play = await getPlayUrls({ bvid, cid, jar, referer: videoReferer(bvid) });
 console.log('video  :', video.title.slice(0, 36), `${video.duration}s`, 'quality', play.quality?.label);
-if (!play.audioUrl) throw new Error('这个视频没有独立的音频流（durl 老格式），暂时不支持');
-
-const dir = join(tmpdir(), `bili-asr-${bvid}-${Date.now()}`);
-await mkdir(dir, { recursive: true });
-const wav = join(dir, 'audio.wav');
-const out = join(dir, 'asr.json');
-
-try {
-  console.log('audio  : 抽', maxSeconds, '秒到', wav);
-  await extractAudio({ url: play.audioUrl, outFile: wav, referer: videoReferer(bvid), maxSeconds, timeoutMs: 300_000 });
-  const { size } = await import('node:fs').then((fs) => fs.promises.stat(wav));
-  console.log('audio  :', (size / 1024 / 1024).toFixed(1), 'MB');
-
-  await execFileAsync('powershell.exe', [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    'lib/media/sapi-asr.ps1',
-    '-Wave',
-    wav,
-    '-Out',
-    out,
-  ]);
-  const parsed = JSON.parse((await readFile(out, 'utf8')).replace(/^\uFEFF/, ''));
-  console.log('asr    :', parsed.count, 'segments, culture', parsed.culture);
-  for (const item of parsed.results.slice(0, 12)) {
-    const mm = String(Math.floor(item.startSec / 60)).padStart(2, '0');
-    const ss = String(Math.round(item.startSec % 60)).padStart(2, '0');
-    console.log(`  ${mm}:${ss}  ${item.text}`);
-  }
-} finally {
-  await rm(dir, { recursive: true, force: true }).catch(() => {});
+if (!play.audioUrl) {
+  console.error('这个视频没有独立音频流，无法转写');
+  process.exit(1);
 }
+
+const started = Date.now();
+const payload = await transcribeUrl({
+  audioUrl: play.audioUrl,
+  referer: videoReferer(bvid),
+  maxSeconds,
+  language,
+  timeoutMs: 1_800_000,
+});
+
+const entries = segmentsToEntries(payload);
+const verdict = judgeTranscript(payload);
+console.log('asr    :', payload.engine, payload.model, `lang=${payload.language}`, `wall=${((Date.now() - started) / 1000).toFixed(1)}s`);
+console.log('audio  :', payload.duration_sec, 's →', entries.length, '段', `avgLogprob=${payload.confidence?.avg_logprob}`, `lowRatio=${payload.confidence?.low_confidence_ratio}`);
+console.log('verdict:', verdict.level, verdict.usable ? '(可用)' : `(不可用：${verdict.reason})`);
+for (const entry of entries.slice(0, 14)) {
+  const total = Math.round(entry.atMs / 1000);
+  console.log(`  ${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}  ${entry.text}`);
+}
+if (entries.length > 14) console.log(`  … 共 ${entries.length} 段`);
