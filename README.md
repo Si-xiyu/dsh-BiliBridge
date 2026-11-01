@@ -7,9 +7,28 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 18 个：14 个有宿主验收记录，搜索/评论/用户主页/动态有独立进程真实验收；**本机（Windows）尚未加载进宿主**。
-- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）与 Stage 2（故事板定向补帧）可用；真抽帧需要 ffmpeg，正在补。
+- 工具层 18 个：**已装进本机 Windows 的 desktop profile，宿主内 18 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
+- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 精确抽帧**（误差 ≤100ms，宿主内实测），没有 ffmpeg 时降级故事板并如实报 `maxErrorMs`。
 - 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
+
+## 外部依赖：ffmpeg（可选，但决定画面质量）
+
+`bilibili_inspect` 优先用 ffmpeg 从播放流精确抽帧；没有它，画面自动降级为 B站故事板（约 6–8 秒一格，读小字不行）。
+
+```powershell
+# 1) 放二进制（示例：gyan essentials 静态包）
+#    D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe
+
+# 2) 让插件找到它（二选一）
+#    a. 写配置文件 %USERPROFILE%\.dsh\bilibili\config.json
+#       { "ffmpegPath": "D:/tools/ffmpeg/.../bin/ffmpeg.exe", "ffmpegCaFile": "C:/Users/<你>/.dsh/bilibili/cacert.pem" }
+#    b. 设环境变量 FFMPEG_PATH / FFMPEG_CA_FILE
+
+# 3) Windows 必须给 CA：该构建用 gnutls，不读系统证书库
+#    把 Mozilla 根证书存成 %USERPROFILE%\.dsh\bilibili\cacert.pem
+```
+
+Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node tests/manual-frames.mjs BV1GJ411x7h7 auto`。
 
 ## 工具
 
