@@ -136,9 +136,21 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   `fallbackReason`；精度不再写死，故事板按 `index` 中位间距算 `maxErrorMs`；补帧目标超出有效格数时标 `reused`。
 - 分 P 不存在时**报错**而不是静默用第 1 个分 P（`evidence.mjs` / `extract.mjs`）。
 
+### 5.3 媒体层 M8.2a：硬字幕带抽取
+
+- 新增 `lib/media/ocr.mjs`：`planSamples` 均匀规划采样点（数量夹在 2–24，两端留白），
+  `buildSubtitleStrip` 按时间点逐个 `-ss` 抽帧并裁掉底部以外区域（默认保留底部 22%），
+  用 sharp 竖拼成一张长图，左侧标注 `mm:ss`。
+- 单点抽帧失败不致命：整条字幕带是抽样证据，少一行好过整条链路失败。
+- **只做取图和拼图，不做识别**：识别引擎由调用方接入，选型不影响这条管线。
+- 验收（`node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22`）：1080P、12/12 采样成功、
+  输出 1368×1884 / 566KB，每行中英双字幕肉眼完全可读。
+
+
 ## 6. 还没做的（按顺序）
 
-1. **M8.2 硬字幕 OCR**：无字幕轨时裁底部字幕带拼长图 → OCR → 带时间戳文本行，标 `origin: ocr`。
+1. **M8.2 硬字幕 OCR**：**抽取已做**（`lib/media/ocr.mjs` + `tests/manual-ocr.mjs`，实测 12 行字幕带清晰可读）；
+   **识别引擎未接** —— 需要先定 Tesseract 还是 RapidOCR，接入后输出要标 `origin: ocr`。
 2. **M8.3 ASR 兜底**：音频流 → 16k wav → 本地转写，标 `origin: asr`；远程转写需单独授权。
 3. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
 4. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新重试、字幕 800 条续取、二阶段强制（`gaps` 字段）。
@@ -178,6 +190,9 @@ npm test
 # 真抽帧（只用 config.json 里的 ffmpeg 配置）
 node tests/manual-frames.mjs BV1GJ411x7h7 auto 10000 60000
 node tests/manual-frames.mjs BV1GJ411x7h7 storyboard     # 强制故事板对照
+
+# 硬字幕带长图（识别引擎尚未接入）
+node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22
 
 # 匿名证据包（不写账号）
 $env:BILI_DATA_DIR="$env:USERPROFILE\.dsh\bilibili"
