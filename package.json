@@ -16,9 +16,6 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.35.5"
   },
-  "devDependencies": {
-    "jsqr": "^1.4.0"
-  },
   "engines": {
     "dsh": ">=0.1.0-rc.6 <0.3.0",
     "node": ">=20"
