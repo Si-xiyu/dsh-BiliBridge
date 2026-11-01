@@ -105,3 +105,29 @@ Windows 上必须给 CA：该构建用 gnutls 且不读系统证书库，直连 
 | ffmpeg 缺失 | `DEPENDENCY_MISSING`；`auto` 自动降级故事板并带 `FRAME_SOURCE_FALLBACK` 警告 |
 
 `npm test` 32/32（新增 6 条媒体单测）。
+
+## 2026-11-02 Windows 登录态全量验收
+
+扫码登录 `四夕羽_`（mid 215407733）后，把 macOS 阶段验过的能力在本机逐项跑通：
+
+| 工具 | 本机结果 |
+| --- | --- |
+| auth_status / me | 已登录，level 6，VIP，coin 450.6；凭据 ACL 为仅当前用户 |
+| user_videos（不传 mid） | 2 条投稿，最新 `BV18n5nz8E6n`，播放 156 |
+| watch_later_list | 39 条 |
+| favorites_list | 19 个收藏夹 |
+| search | total=1000，`<em>` 高亮已剥离 |
+| comments | total=2272，热门含 3 条楼中楼 |
+| user_profile | fans 60326 / following 310 / archiveCount 2201 |
+| dynamics | 关注流，返回 `dsh:` 游标 |
+| extract | BV1KDNA6eEgr：字幕 `ai-zh` 190 cues 覆盖 100%、弹幕 213、热评、封面 + 九宫格，`imageAttached=true` |
+| extract（长视频） | BV1VZWc6dECG：字幕 `truncated=true`（800 条，覆盖 28:17 / 54:57） |
+| inspect | `source=ffmpeg`、`exact`、`maxErrorMs=100`、**1080P**、`imageAttached=true` |
+| 写操作 | 仅 dry-run：bvid→aid 解析正常，未提交写请求 |
+
+**登录态是字幕的前提**：同一视频匿名请求 `player/wbi/v2` 得到 0 条轨道，登录后 190 条。
+此前“匿名没字幕”不能被解读成“这个视频没有字幕”。
+
+与 macOS 阶段的差异只是数据增长（粉丝、评论总数、稍后观看 +1），没有行为差异；
+`inspect` 反而从“故事板兜底”升级为“ffmpeg 1080P 真帧”。
+

@@ -34,7 +34,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 | 外部依赖 | **ffmpeg 9.0.2**（gyan essentials 静态包，`D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe`） |
 | ffmpeg 配置 | `%USERPROFILE%\.dsh\bilibili\config.json` 的 `ffmpegPath` + `ffmpegCaFile`；也可用 `FFMPEG_PATH` / `FFMPEG_CA_FILE` |
 | CA 证书 | `%USERPROFILE%\.dsh\bilibili\cacert.pem`（Mozilla 根证书，来自 certifi） |
-| B站登录态 | **本机未登录**（旧 Mac 的凭据不跨机器） |
+| B站登录态 | **已登录**：`四夕羽_`（mid 215407733，level 6，VIP）；凭据 `credentials.json` 的 ACL 已收紧为仅 `VERDANT\16832:(F)` |
 
 **为什么 Windows 上必须给 CA**：gyan 的构建是 gnutls，且不读 Windows 证书库，直连 B站 CDN 会报
 `Peer certificate failed verification`。给 `-ca_file` 后正常；Node 侧不受影响（undici 自带信任链）。
@@ -88,9 +88,28 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 `npm test` → **32/32**（新增 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失报错）。
 
-### 4.4 未验证
+### 4.4 Windows 登录态全量验收（2026-11-02）
 
-登录态下的完整链路（字幕轨、稍后观看、收藏、写操作）——本机还没扫码。
+扫码成功（`四夕羽_` / mid 215407733 / level 6 / VIP），随后把 macOS 上验过的链路逐项在本机跑了一遍：
+
+| 能力 | 本机结果 | 与 Mac 记录对比 |
+| --- | --- | --- |
+| `auth_status` / `me` | 已登录，mid 215407733，coin 450.6 | 一致 |
+| `user_videos`（不传 mid） | 2 条投稿，最新 `BV18n5nz8E6n`（播放 156） | 一致 |
+| `watch_later_list` | 39 条 | Mac 38（期间新增 1） |
+| `favorites_list` | 19 个收藏夹 | 一致 |
+| `search` | total=1000，高亮标签已剥离 | 一致 |
+| `comments` | total=2272，含楼中楼 | Mac 2234（增长） |
+| `user_profile` | fans 60326 / following 310 / archiveCount 2201 | Mac 60152 / 310 / 2193（增长） |
+| `dynamics` | 关注流 2 条，`dsh:` 游标 | 一致 |
+| `extract`（BV1KDNA6eEgr） | 字幕 `ai-zh` 190 cues 覆盖 100%、弹幕 213、热评含楼中楼、封面 + 九宫格，`imageAttached=true` | 一致 |
+| `extract`（BV1VZWc6dECG，55 分钟） | 字幕 `ok` 但 `truncated=true`（800 条，覆盖到 28:17） | 一致（1576 条截断） |
+| `inspect` | `source=ffmpeg`、`exact`、`maxErrorMs=100`、**1080P**、`imageAttached=true` | Mac 只有故事板，本机更好 |
+| 写操作 dry-run（like / wl / fav） | bvid→aid 解析正常，未提交 | 一致 |
+
+**新发现**：匿名请求 `player/wbi/v2` 返回 0 条字幕轨，登录后同一视频有 190 条 —— **字幕列表是登录后才有的**，
+所以“匿名没字幕”不能当作“这个视频没有字幕”。
+
 
 ## 5. 本轮完成
 
@@ -121,7 +140,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 1. **M8.2 硬字幕 OCR**：无字幕轨时裁底部字幕带拼长图 → OCR → 带时间戳文本行，标 `origin: ocr`。
 2. **M8.3 ASR 兜底**：音频流 → 16k wav → 本地转写，标 `origin: asr`；远程转写需单独授权。
-3. **账号链路本机验收**：扫码登录 → 字幕轨 / 稍后观看 / 收藏 / 写操作。
+3. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
 4. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新重试、字幕 800 条续取、二阶段强制（`gaps` 字段）。
 5. **画质**：未登录只有 480P；1080P 需要登录 + `fourk`。OCR 阶段尤其需要高清帧。
 
