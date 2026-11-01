@@ -9,7 +9,7 @@
  * - ffmpeg 可用 → source=ffmpeg, maxErrorMs≈100，帧图落盘
  * - 没有 ffmpeg → auto 自动降级 storyboard，并给出真实 maxErrorMs（不是写死的 ±1s）
  */
-import { CookieJar } from '../lib/bili/http.mjs';
+import { currentJar } from '../lib/bili/auth.mjs';
 import { getVideo } from '../lib/bili/api.mjs';
 import { getPlayUrls } from '../lib/bili/playurl.mjs';
 import { buildInspection } from '../lib/media/inspect.mjs';
@@ -22,7 +22,9 @@ const toolchain = await resolveToolchain().catch((error) => ({ error }));
 console.log('toolchain:', toolchain.error ? `MISSING(${toolchain.error.code})` : toolchain.ffmpeg);
 if (!toolchain.error) console.log('ca       :', toolchain.caFile ?? '(未设置，非 Windows 可忽略)');
 
-const jar = new CookieJar({});
+// 用真实登录态：未登录只有 480P，和宿主里的行为对不上。
+const { jar, credentials } = await currentJar();
+console.log('login    :', credentials?.cookies?.SESSDATA ? '已登录（可用高清档）' : '未登录（多半只有 480P）');
 const video = await getVideo(bvid, { jar });
 const cid = video.pages[0].cid;
 console.log('video    :', video.title.slice(0, 30), `${video.duration}s`, 'cid', cid);
