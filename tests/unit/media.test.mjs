@@ -6,6 +6,7 @@ import { CookieJar } from '../../lib/bili/http.mjs';
 import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
 import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
 import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
+import { judgeTranscript, segmentsToEntries } from '../../lib/media/asr.mjs';
 import { resetFfmpegCache, resolveToolchain } from '../../lib/media/ffmpeg.mjs';
 
 const nav = {
@@ -130,6 +131,26 @@ test('字幕带采样点：数量夹在 2–24、均匀、落在片内', () => {
   assert.equal(planSamples({ durationMs: 600_000, count: 99 }).length, 24, '太多会被压到 24');
   assert.throws(() => planSamples({ durationMs: 0 }), (error) => error.code === 'INVALID_ARGUMENT');
   assert.throws(() => planSamples({ durationMs: NaN }), (error) => error.code === 'INVALID_ARGUMENT');
+});
+
+test('ASR 置信度判定：空、低置信、可用三种情况', () => {
+  assert.equal(judgeTranscript({ segments: [] }).level, 'empty');
+  assert.equal(judgeTranscript({ segments: [{ start: 0, end: 1, text: 'x' }], confidence: { low_confidence_ratio: 0.5 } }).level, 'low');
+  assert.equal(judgeTranscript({ segments: [{ start: 0, end: 1, text: 'x' }], confidence: { avg_logprob: -1.4, low_confidence_ratio: 0.1 } }).level, 'low');
+  assert.equal(judgeTranscript({ segments: [{ start: 0, end: 1, text: 'x' }], confidence: { avg_logprob: -0.2, low_confidence_ratio: 0.05 } }).usable, true);
+});
+
+test('ASR 段落转统一证据条目：毫秒时间、跳过空文本', () => {
+  const entries = segmentsToEntries({
+    segments: [
+      { start: 1.5, end: 2.5, text: '  你好  ' },
+      { start: 3, end: 3.5, text: '   ' },
+      { start: 4.2, end: 5.9, text: '世界' },
+    ],
+  });
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries[0], { atMs: 1500, endMs: 2500, text: '你好', source: 'asr' });
+  assert.equal(entries[1].atMs, 4200);
 });
 
 test('OCR 文本清理：中文之间不保留空格，保持英文单词边界', () => {
