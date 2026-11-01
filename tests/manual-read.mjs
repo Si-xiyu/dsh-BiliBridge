@@ -1,5 +1,7 @@
 /** Real read-only tool checks. Credentials are used only by the existing auth layer. */
 import { parseArgs } from 'node:util';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { apply } from '../lib/index.js';
 
 const definitions = new Map();
@@ -12,7 +14,7 @@ try {
     offset: { type: 'string' }, 'no-replies': { type: 'boolean' }, anonymous: { type: 'boolean' },
   } });
   // Anonymous verification uses an empty temporary credential location without writing it.
-  if (values.anonymous) process.env.BILI_DATA_DIR = `/tmp/bili-anonymous-${process.pid}`;
+  if (values.anonymous) process.env.BILI_DATA_DIR = join(tmpdir(), `bili-anonymous-${process.pid}`);
   const [command, value] = positionals;
   const names = { search: 'bilibili_search', comments: 'bilibili_comments', profile: 'bilibili_user_profile', dynamics: 'bilibili_dynamics' };
   if (!names[command]) throw new Error('用法: node tests/manual-read.mjs search <keyword> | comments <BV> | profile <mid> | dynamics [--mid mid]');

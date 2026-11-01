@@ -2,3 +2,6 @@ node_modules/
 .bili-data/
 *.log
 .DS_Store
+# 本地临时目录（会话解包、npm 缓存、模型/媒体缓存）
+.tmp-*/
+.cache/

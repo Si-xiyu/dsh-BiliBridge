@@ -9,7 +9,8 @@
   },
   "description": "DSH plugin: Bilibili account tools for the main DeepSeek agent",
   "scripts": {
-    "test": "node --test tests/unit/*.test.mjs"
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:single": "node --test --test-isolation=none tests/unit/*.test.mjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

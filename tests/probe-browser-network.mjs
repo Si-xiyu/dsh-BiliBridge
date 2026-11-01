@@ -7,7 +7,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const require = createRequire(import.meta.url);
-const { chromium } = require('/Users/kairos/Agent/deepseek/xhs-digest/node_modules/playwright-core');
+let chromium;
+try {
+  ({ chromium } = require(process.env.PLAYWRIGHT_CORE ?? 'playwright-core'));
+} catch {
+  console.error('这个探针需要 playwright-core：npm i -D playwright-core，或用 PLAYWRIGHT_CORE 指向它的入口文件');
+  process.exit(1);
+}
 
 const BVID = process.argv[2] ?? 'BV1pTx76QE8J';
 const creds = JSON.parse(await readFile(join(homedir(), '.dsh/bilibili/credentials.json'), 'utf8'));
