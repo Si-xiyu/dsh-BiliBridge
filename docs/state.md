@@ -86,7 +86,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 4.3 单测
 
-`npm test` → **32/32**（新增 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失报错）。
+`npm test` → **38/38**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
 
 ### 4.4 Windows 登录态全量验收（2026-11-02）
 
@@ -153,7 +153,23 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   宿主内正常。
 - **插件改动需要重启 DSH 才生效**（服务端插件没有 HMR）；本轮是因为改了 profile 触发重载才即时可见。
 
-## 8. 复现命令
+## 8. 换机器迁移清单
+
+代码可以 clone，但**这些不在仓库里**，换一台机器必须重做：
+
+| 项 | 做什么 | 漏了会怎样 |
+| --- | --- | --- |
+| npm 依赖 | `npm install`（`sharp`、`qrcode`） | 插件加载失败 / 图片合成不可用 |
+| ffmpeg | 放二进制，写 `config.json#ffmpegPath`（或 `FFMPEG_PATH`） | 画面降级故事板，`inspect` 精度 ±3s |
+| CA 证书 | `cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`） | Windows 上 ffmpeg 连 CDN 报证书失败，同样降级 |
+| B站登录 | 重新扫码（或复制 `credentials.json`，但新 IP 可能触发风控） | 字幕 0 条、稍后观看/收藏全部 `AUTH_REQUIRED` |
+| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主里看不到 18 个工具 |
+| 重启宿主 | 插件没有 HMR | 改动不生效，容易出现“脚本结论和宿主不一致” |
+
+平台差异（Windows）：`chmod 0600` 无效 → 用 icacls；`/tmp` 落到盘根 → 用 `os.tmpdir()`；
+ffmpeg 的 gnutls 构建不读系统证书库 → 必须给 `-ca_file`。
+
+## 9. 复现命令
 
 ```powershell
 cd E:\Code\dsh-BiliBridge
@@ -172,7 +188,7 @@ node tests/manual-read.mjs search "编程" --type video
 node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 ```
 
-## 9. 文档地图
+## 10. 文档地图
 
 | 文件 | 性质 |
 | --- | --- |
