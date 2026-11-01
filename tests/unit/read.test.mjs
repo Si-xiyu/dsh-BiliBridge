@@ -92,6 +92,31 @@ test('comments WBI fallback is explicit and does not pretend to support pn', asy
   });
 });
 
+test('comments cap supplemental reply requests at five and preserve remaining previews', async () => {
+  const rows = Array.from({ length: 20 }, (_, index) => ({
+    rpid: index + 1, rcount: 10,
+    replies: Array.from({ length: index === 0 ? 3 : 1 }, (_, child) => ({ rpid: `preview-${index}-${child}` })),
+  }));
+  await mockFetch({
+    '/x/web-interface/view': { code: 0, data: video },
+    '/x/v2/reply': { code: 0, data: { page: { count: 20 }, replies: rows } },
+    '/x/v2/reply/reply': { code: 0, data: { replies: [{ rpid: 'fetched' }] } },
+  }, async (calls) => {
+    const result = await listComments({ bvid: video.bvid, jar: jar() });
+    const replyCalls = calls.filter(call => call.url.pathname === '/x/v2/reply/reply');
+    assert.deepEqual(replyCalls.map(call => call.url.searchParams.get('root')), ['2', '3', '4', '5', '6']);
+    assert.equal(result.items.length, 20);
+    assert.equal(result.items[0].replies.length, 3);
+    assert.equal(result.items[5].replies[0].rpid, 'fetched');
+    assert.equal(result.items[6].replies[0].rpid, 'preview-6-0');
+    assert.equal(result.items[19].replies[0].rpid, 'preview-19-0');
+    calls.length = 0;
+    const withoutReplies = await listComments({ bvid: video.bvid, includeReplies: false, jar: jar() });
+    assert.ok(withoutReplies.items.every(item => item.replies.length === 0));
+    assert.ok(!calls.some(call => call.url.pathname === '/x/v2/reply/reply'));
+  });
+});
+
 test('dynamics project video, opus and repost without leaking modules', () => {
   const original = { id_str: '1', type: 'DYNAMIC_TYPE_AV', modules: { module_author: { mid: 2, name: 'UP', pub_ts: 1 }, module_dynamic: { desc: { text: '原文' }, major: { archive: { bvid: video.bvid, title: '标题' } } } } };
   const repost = projectDynamic({ id_str: '3', modules: { module_dynamic: { desc: { text: '转发' } } }, orig: original });
