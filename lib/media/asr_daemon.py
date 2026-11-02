@@ -113,6 +113,11 @@ def main():
     # 因此在起线程之前把重活导入先做完；模型本身仍然懒加载。
     import numpy  # noqa: F401
     from faster_whisper import WhisperModel  # noqa: F401
+    # VAD 会在首次转写时才导入 onnxruntime（同样是 C 扩展），必须一起前置。
+    try:
+        import onnxruntime  # noqa: F401
+    except Exception:
+        pass
 
     # A reader thread supports Windows anonymous pipes, unlike select().
     def read_requests():

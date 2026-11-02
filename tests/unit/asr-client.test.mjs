@@ -90,29 +90,29 @@ test('pre-aborted signal never starts a worker', async () => {
   assert.equal(f.children.length, 0);
 });
 
-test('crash retries once and later requests restart after idle exit', async () => {
+test('崩溃发生在请求已提交之后：不重放、不回退，下一次调用重新拉起 worker', async () => {
   const f = fixture();
   const job = f.transcribeViaDaemon();
   await tick();
   f.children[0].emit('exit', 1);
-  await tick();
-  assert.equal(f.children.length, 2);
-  assert.equal(f.children[1].requests[0].id, 2);
-  reply(f.children[1]);
-  await job;
-  f.children[1].emit('exit', 0);
+  // 请求已经写进 daemon，重试会让同一段音频被算两次；只能如实报错。
+  await assert.rejects(job, (error) => code('UPSTREAM_ERROR')(error) && !error.data?.daemonFallback);
+  assert.equal(f.children.length, 1);
+
+  // 下一次调用应重新启动 daemon，而不是复用已死的进程。
   const next = f.transcribeViaDaemon();
   await tick();
-  reply(f.children[2]);
+  assert.equal(f.children.length, 2);
+  reply(f.children[1]);
   await next;
 });
 
-test('malformed protocol and mismatched ids exhaust one retry and allow fallback', async () => {
+test('协议异常发生在请求已提交之后：只报错，不重试也不回退', async () => {
   for (const response of ['not json\n', '{"id":999,"ok":true,"payload":{"segments":[]}}\n',
     '{"id":1,"ok":true,"payload":{}}\n']) {
     const f = fixture(child => queueMicrotask(() => child.stdout.write(response)));
-    await assert.rejects(f.transcribeViaDaemon(), error => code('UPSTREAM_ERROR')(error) && error.data.daemonFallback);
-    assert.equal(f.children.length, 2);
+    await assert.rejects(f.transcribeViaDaemon(), (error) => code('UPSTREAM_ERROR')(error) && !error.data?.daemonFallback);
+    assert.equal(f.children.length, 1);
     assert.ok(f.children.every(child => child.killed));
   }
 });
