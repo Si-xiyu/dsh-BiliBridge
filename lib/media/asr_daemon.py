@@ -108,6 +108,12 @@ def main():
     service = Service(args.model_dir)
     incoming = queue.Queue()
 
+    # Windows 上的坑：stdin 保持打开、读线程阻塞在 readline 时，主线程再去导入 numpy /
+    # ctranslate2 的 C 扩展会死锁（实测卡在 importlib create_module，关掉 stdin 就正常）。
+    # 因此在起线程之前把重活导入先做完；模型本身仍然懒加载。
+    import numpy  # noqa: F401
+    from faster_whisper import WhisperModel  # noqa: F401
+
     # A reader thread supports Windows anonymous pipes, unlike select().
     def read_requests():
         for line in sys.stdin:
