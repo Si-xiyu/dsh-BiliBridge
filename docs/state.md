@@ -47,7 +47,9 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 - 认证：扫码登录、状态、退出（凭据仅当前用户可读：POSIX 0600 / Windows icacls）
 - 读：当前账号、视频元数据与统计、投稿列表、用户主页、搜索（视频/用户）、评论（含楼中楼）、动态（用户/关注流）
 - 集合：稍后观看列表、收藏夹与内容
-- 写（需审批）：稍后观看增删、收藏/取消、点赞/取消
+- 写（dry-run 默认 + 审批）：稍后观看增删、收藏/取消、点赞/取消
+  - 默认 `intent=preview`：只回读当前状态，不发写请求（实测 like=false、watch_later=true 均为只读）
+  - `intent=apply`：真写后回读校验；结果不明时先回读和解，不盲目重试；收藏夹必须显式 `mediaId`
 - 视频理解（Fast Path / Deep Path，2026-11-02 定稿）：
   - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 封面 / 故事板九宫格
     （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。

@@ -16,10 +16,10 @@
 | bilibili_video | verified（历史） | /x/web-interface/view | 本轮评论解析 aid 也实际调用 |
 | bilibili_user_videos | verified（历史） | /x/space/wbi/arc/search | 本轮主页投稿计数也实际调用 |
 | bilibili_watch_later_list | verified（历史） | /x/v2/history/toview | 历史 DSH 验收 |
-| bilibili_watch_later_set | implemented | /x/v2/history/toview/add 或 del | 仅历史 dry-run，真实写入未验收 |
+| bilibili_watch_later_set | verified（预览；apply 受控） | 写接口 + 写后回读（/x/v2/history/toview、/x/v3/fav/resource、/x/web-interface/archive/like） | 默认 dry-run：只回读当前状态，不发写请求；intent=apply 才写并回读校验；结果不明先回读和解，不盲目重试 |
 | bilibili_favorites_list | verified（历史） | /x/v3/fav/folder/created/list-all；/x/v3/fav/resource/list | 历史 DSH 验收 |
-| bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
-| bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
+| bilibili_favorite_set | verified（预览；apply 受控） | 写接口 + 写后回读（/x/v2/history/toview、/x/v3/fav/resource、/x/web-interface/archive/like） | 默认 dry-run：只回读当前状态，不发写请求；intent=apply 才写并回读校验；结果不明先回读和解，不盲目重试 |
+| bilibili_video_like_set | verified（预览；apply 受控） | 写接口 + 写后回读（/x/v2/history/toview、/x/v3/fav/resource、/x/web-interface/archive/like） | 默认 dry-run：只回读当前状态，不发写请求；intent=apply 才写并回读校验；结果不明先回读和解，不盲目重试 |
 | bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；/x/player/videoshot；/x/v2/reply；comment.bilibili.com/{cid}.xml | **Stage 1 Fast Path**：平台字幕（上传优先、其次 AI）/弹幕/评论/封面/九宫格 + `gaps` / `suggestedWindows` / `evidenceLevel`；**不跑 ASR/OCR**；无字幕时 `subtitles.status=empty`。实测 411–831ms，与视频长度无关 |
 | bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（多雪碧图）；OCR 走 Windows.Media.Ocr | 宿主内：`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`（未读 PTS，不声明毫秒上界）、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图；`ocr=true` 对返回帧批量识别（一次 PowerShell），`subtitleWindow` 走窗口连续字幕 OCR（跳过超限长图） |
 | bilibili_transcribe | verified（本机进程内） | /x/player/wbi/playurl（音频流）+ 常驻 faster-whisper worker | 冷启 18.0s → 复用 4.1s；20s 窗口 9 段中文、`verdict=ok`、时间戳在原视频轴；缓存命中约 60ms 且不扣音频预算；越界/非法参数取流前报错；已提交请求失败不重放 |
