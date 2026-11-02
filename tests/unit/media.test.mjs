@@ -7,6 +7,8 @@ import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
 import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
 import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
 import { judgeTranscript, segmentsToEntries } from '../../lib/media/asr.mjs';
+import { coverageRatio } from '../../lib/media/timeline.mjs';
+import { suggestedWindowsFromDensity } from '../../lib/media/evidence.mjs';
 import {
   locateStoryboardOrder,
   pickOverviewOrders,
@@ -178,6 +180,45 @@ test('故事板概览取样覆盖整条时间轴', () => {
   const single = { images: ['a'], cols: 10, rows: 10, index: Array.from({ length: 40 }, (_, i) => i) };
   const singleOrders = pickOverviewOrders(single, 9);
   assert.equal(singleOrders.at(-1), 39);
+});
+
+test('字幕覆盖按区间并集：重叠、乱序、越界、中间挖空', () => {
+  assert.equal(coverageRatio([{ startMs: 0, endMs: 1000 }, { startMs: 500, endMs: 1500 }], 2000), 0.75);
+  assert.equal(coverageRatio([{ startMs: 1000, endMs: 2000 }, { startMs: 0, endMs: 500 }], 2000), 0.75);
+  assert.equal(coverageRatio([{ startMs: 0, endMs: 3000 }], 2000), 1);
+  // 中间挖空：最后一条结束时间是 2000（看起来全覆盖），实际只有 75%。
+  assert.equal(coverageRatio([{ startMs: 0, endMs: 1000 }, { startMs: 1500, endMs: 2000 }], 2000), 0.75);
+  assert.equal(coverageRatio([], 2000), 0);
+  assert.equal(coverageRatio([{ startMs: 0, endMs: 100 }], 0), 0);
+});
+
+test('故事板没有时间索引时明确不可用，而不是伪造一格', () => {
+  const noIndex = { images: ['a'], cols: 10, rows: 10, index: [] };
+  assert.equal(validTileCount(noIndex), 0);
+  assert.deepEqual(pickOverviewOrders(noIndex, 9), []);
+  assert.equal(locateStoryboardOrder(noIndex, 10), -1);
+
+  const noImages = { images: [], cols: 10, rows: 10, index: [0, 8, 16] };
+  assert.equal(validTileCount(noImages), 0);
+
+  // index 比容量长：容量封顶
+  const longer = { images: ['a'], cols: 2, rows: 2, index: [0, 1, 2, 3, 4, 5] };
+  assert.equal(validTileCount(longer), 4);
+});
+
+test('suggestedWindows：去重、按时间排序、不改动输入、limit=0 返回空', () => {
+  const density = [
+    { startSec: 30, endSec: 60, count: 5 },
+    { startSec: 0, endSec: 30, count: 9 },
+    { startSec: 0, endSec: 30, count: 9 },
+    { startSec: 60, endSec: 90, count: 1 },
+  ];
+  const snapshot = JSON.stringify(density);
+  const windows = suggestedWindowsFromDensity(density, { limit: 2 });
+  assert.equal(JSON.stringify(density), snapshot, '不应修改传入的 density 数组');
+  assert.deepEqual(windows.map((w) => w.startSeconds), [0, 30]);
+  assert.equal(windows[0].danmakuCount, 9);
+  assert.deepEqual(suggestedWindowsFromDensity(density, { limit: 0 }), []);
 });
 
 test('ASR 置信度判定：空、低置信、可用三种情况', () => {
