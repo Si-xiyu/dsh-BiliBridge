@@ -81,3 +81,54 @@ test('客户端源码保留中文文案（防止再次被写成问号占位）',
   }
   assert.ok(!/[?？]{3,}/.test(source), 'client.js 不应该出现连续问号占位');
 });
+async function loadExports() {
+  const descriptor = await loadClient();
+  return descriptor.factory(() => fakeReact());
+}
+
+const statusFixture = {
+  ok: true,
+  account: { ok: true, loggedIn: true, uname: '四夕羽_', accountId: '215407733', level: 6, vip: true, credentialsPath: 'C:/x/credentials.json' },
+  runtime: { ffmpeg: { ok: true, ffmpeg: 'D:/ffmpeg.exe' }, asr: { ok: true, python: 'D:/py.exe', model: 'small' }, ocr: { ok: true, available: true } },
+  budget: { ok: true, items: [] },
+  cache: { ok: true, totalBytes: 2048, totalFiles: 3, buckets: [{ name: 'asr', bytes: 1024, files: 1, }, { name: 'cover', bytes: 0, files: 0 }] },
+  generatedAt: '2026-11-02T00:00:00.000Z',
+};
+
+function renderOf(exports, patch) {
+  const data = { ...statusFixture, ...patch };
+  return JSON.stringify(exports.renderDashboard({ data, error: '', loading: false, refresh: () => {} }));
+}
+
+test('渲染：账号、运行时、缓存数字都能出来', async () => {
+  const exports = await loadExports();
+  const html = renderOf(exports, {});
+  for (const expected of ['四夕羽_', 'Lv 6', '大会员', 'D:/ffmpeg.exe', 'D:/py.exe', '3 个文件', '2.0 KB']) {
+    assert.ok(html.includes(expected), `缺少渲染内容：${expected}`);
+  }
+});
+
+test('渲染：预算为空显示空态，有任务时显示轮次与秒数', async () => {
+  const exports = await loadExports();
+  assert.ok(renderOf(exports, {}).includes('（没有进行中的分析）'));
+
+  const withItem = renderOf(exports, {
+    budget: { ok: true, items: [{ bundleId: 'b1', bvid: 'BV1', rounds: 1, roundsLimit: 6, audioSecondsUsed: 20, audioSecondsLimit: 900, expiresAt: '2026-11-02T01:00:00.000Z' }] },
+  });
+  assert.ok(withItem.includes('BV1'));
+  assert.ok(withItem.includes('1/6 轮'));
+  assert.ok(withItem.includes('20/900 秒'));
+});
+
+test('渲染：分区失败显示错误码，不画成空数据', async () => {
+  const exports = await loadExports();
+  assert.ok(renderOf(exports, { budget: { ok: false, code: 'BUDGET_FAILED', items: [] } }).includes('读取失败（BUDGET_FAILED）'));
+  assert.ok(renderOf(exports, { cache: { ok: false, code: 'CACHE_FAILED' } }).includes('读取失败（CACHE_FAILED）'));
+  assert.ok(renderOf(exports, { account: { ok: false, code: 'AUTH_FAILED' } }).includes('读取失败（AUTH_FAILED）'));
+});
+
+test('渲染：未登录与旧形状（budget 是数组）都不崩', async () => {
+  const exports = await loadExports();
+  assert.ok(renderOf(exports, { account: { ok: true, loggedIn: false } }).includes('未登录'));
+  assert.ok(renderOf(exports, { budget: [] }).includes('（没有进行中的分析）'));
+});
