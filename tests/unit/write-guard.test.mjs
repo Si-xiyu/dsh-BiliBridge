@@ -96,3 +96,14 @@ test('registered write tools default to GET-only preview and reject invisible fo
     });
   } finally { if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old; }
 });
+test('eventual consistency: readback polls until the target state appears', async () => {
+  let reads = 0;
+  const result = await guardedWrite({
+    intent: 'apply', desired: true, target,
+    read: async () => state(++reads >= 3),
+    write: async () => {},
+    sleep: async () => {},
+  });
+  assert.equal(result.verified, true);
+  assert.equal(reads, 3, '写后立刻读到旧值时应继续轮询，而不是直接报未验证');
+});
