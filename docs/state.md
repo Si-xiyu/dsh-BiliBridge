@@ -49,7 +49,8 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 - 集合：稍后观看列表、收藏夹与内容
 - 写（dry-run 默认 + 审批）：稍后观看增删、收藏/取消、点赞/取消
   - 默认 `intent=preview`：只回读当前状态，不发写请求（实测 like=false、watch_later=true 均为只读）
-  - `intent=apply`：真写后回读校验；结果不明时先回读和解，不盲目重试；收藏夹必须显式 `mediaId`
+  - `intent=apply`：真写后回读校验（3 次退避轮询，容忍最终一致性）；结果不明时先回读和解，不盲目重试；收藏夹必须显式 `mediaId`
+  - 实测（BV1KDNA6eEgr）：点赞 → verified → 取消 → verified → 状态还原；期间发现并修掉两个真 bug：取消点赞参数应为 `like=2`（0 会被拒）、写完立刻回读会读到旧值
 - 视频理解（Fast Path / Deep Path，2026-11-02 定稿）：
   - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 封面 / 故事板九宫格
     （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
