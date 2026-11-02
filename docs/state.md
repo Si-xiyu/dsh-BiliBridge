@@ -150,7 +150,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 5.4 ASR（主线，M8.3）
 
-- `lib/media/asr_worker.py`：faster-whisper，CPU `int8`，默认 `small`，`vad_filter`，中文加简体 `initial_prompt`。
+- `lib/media/asr_worker.py`：faster-whisper，CPU `int8`，默认 `small`，`vad_filter`；**默认自动检测语言**（强制 zh 会把英文旁白解码成乱码），中文时加简体 `initial_prompt`。
   **绕开 PyAV 解码**：用标准库 `wave` 读 16k/单声道/PCM16 成 numpy 数组再喂模型（`av 19 + faster-whisper 1.2.1` 的
   `metadata_errors` 参数不兼容，直接调库会 TypeError）。
 - `lib/media/asr.mjs`：运行时解析（`BILI_ASR_PYTHON` → `config.json#asrPython` → `D:\tools\asr\.venv`）、
