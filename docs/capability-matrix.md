@@ -20,8 +20,8 @@
 | bilibili_favorites_list | verified（历史） | /x/v3/fav/folder/created/list-all；/x/v3/fav/resource/list | 历史 DSH 验收 |
 | bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
 | bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
-| bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；`/x/player/wbi/playurl` + 本地 faster-whisper（无平台字幕时）；Windows.Media.Ocr（可选）；/x/v2/reply；/x/player/videoshot；comment.bilibili.com/{cid}.xml | 字幕 190 cues 覆盖 100%、弹幕、评论、封面+九宫格、`imageAttached=true` 均已在宿主内实测；无字幕视频走 ASR（`subtitleSource=asr`，`subtitleStatus=partial`，29 段 `origin=asr`）；OCR 为可选（`subtitleSource=ocr` 才跑）；长视频字幕 800 条截断仍无续取 |
-| bilibili_inspect | verified（宿主内）；故事板降级 limited | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot | 宿主内实测：`source=ffmpeg`、`accuracy=exact`、`maxErrorMs=100`、480P、`imageAttached=true`。未登录只有 480P；ffmpeg 缺失时自动降级故事板并返回真实 `maxErrorMs`（实测 3000ms / 格间距 6000ms） |
+| bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；/x/player/videoshot；/x/v2/reply；comment.bilibili.com/{cid}.xml | **Stage 1 Fast Path**：平台字幕（上传优先、其次 AI）/弹幕/评论/封面/九宫格 + `gaps` / `suggestedWindows` / `evidenceLevel`；**不跑 ASR/OCR**；无字幕时 `subtitles.status=empty`。实测 411–831ms，与视频长度无关 |
+| bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（**多雪碧图**） | 宿主内：`source=ffmpeg`、`accuracy=bounded`、`maxErrorMs=100`、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图定位（55 分钟视频 2000s 落到第 3 张图），`maxErrorMs` 如实报告 |
 | bilibili_search | verified（独立进程） | /x/web-interface/wbi/search/type | 视频和用户搜索均 20 条；真实用户空结果通过；未重启宿主 |
 | bilibili_comments | verified（独立进程）；WBI 降级 limited | view → /x/v2/reply；缺少预览时 /x/v2/reply/reply；必要时 /x/v2/reply/wbi/main | 热门 20 条及楼中楼；最新第二页 3 条。真实调用未触发 WBI 降级，降级只做模拟验证且只支持第一页 |
 | bilibili_user_profile | verified（独立进程） | /x/space/wbi/acc/info → /x/relation/stat → /x/space/wbi/arc/search | 真实主页、粉丝、关注、2193 条投稿计数返回；空间风控直接抛错，无重试循环 |
@@ -130,29 +130,33 @@ Windows 上必须给 CA：该构建用 gnutls 且不读系统证书库，直连 
 
 与 macOS 阶段的差异只是数据增长（粉丝、评论总数、稍后观看 +1），没有行为差异；
 `inspect` 反而从“故事板兜底”升级为“ffmpeg 1080P 真帧”。
-## 2026-11-02 M8.3：本地 ASR（faster-whisper）
+## 2026-11-02 管线定稿：Fast Path / Deep Path
 
-运行时：`faster-whisper 1.2.1`（Python 3.12 venv `D:\tools\asr\.venv`，模型 `D:\tools\asr\models`，默认 `small`），
-CPU `int8` + `vad_filter`；**默认自动检测语言**（实测强制 `zh` 会把英文旁白解码成乱码）。
+Stage 1（`bilibili_extract`）只做低成本收集，**不跑 ASR/OCR**；没有平台字幕就 `empty`。
+Stage 2 由 Agent 按需调用（`inspect` 已就绪，`transcribe` 待实现）。
 
-### 实测
+### Stage 1 实测
 
-| 场景 | 结果 |
+| 视频 | 字幕 | 覆盖 | evidenceLevel | gaps | 耗时 |
+| --- | --- | --- | --- | --- | --- |
+| BV1KDNA6eEgr（5.9 分钟） | ok | 0.988 | rich | — | 411ms |
+| BV1pTx76QE8J（15.5 分钟） | empty | 0 | text-only | `no_subtitles` | 831ms |
+
+- 覆盖度按**区间并集**计算（`coverageRatio`），中间挖空不会高估。
+- `suggestedWindows` 取弹幕密度前 3；`evidenceLevel` = `rich` / `text-only` / `thin`。
+- `schemaVersion` 升到 `2`；`insufficient` 从 Stage 1 移除（那是 Stage 2 的结论）。
+
+### 故事板多雪碧图
+
+| 项 | 结果 |
 | --- | --- |
-| 中文 90s（`BV1KDNA6eEgr`，`language=zh`） | 48 段，55.7s，`avg_logprob=-0.20`，文本可用（"我们中出了一个叛徒的后门"） |
-| 英文 60s（`BV1pTx76QE8J`，`language=auto`） | 12 段，23.5s，`avg_logprob=-0.075`，识别为 `en` 且连贯 |
-| 同一段强制 `zh` | 中英混杂、繁体、大量胡话 —— 强制语言是错误默认 |
-| 宿主内 `bilibili_extract(subtitleSource=asr, asrMaxSeconds=60)` | `subtitleStatus=partial`、`attempts=[platform empty, asr ok]`、29 段 `origin=asr`、`imageAttached=false`（关掉了画面） |
+| BV1VZWc6dECG 故事板 | `images=4`、`index=397`、480×270/格 |
+| 概览覆盖 | 0–3289s（旧实现只到 816s），`spritesUsed=4`，133KB |
+| 兜底定位 | 2000s → 第 3 张图；3200s → 第 4 张图；`maxErrorMs=4000`（格间距 8s） |
 
-### 语义
+### ASR 适配层（尚未接工具）
 
-- `subtitleSource`: `auto`（平台→ASR）/ `platform` / `asr` / `ocr` / `none`；可复调用换源。
-- `subtitleStatus`: `ok` / `partial`（音频截断）/ `empty`（只问平台或 none）/ `insufficient`（三路都没有）。
-- `attempts[]`: 每路的状态与失败 `code`（`DEPENDENCY_MISSING` / `TIMEOUT` / `CANCELLED` / `UPSTREAM_ERROR`）。
-- 截断：`asrMaxSeconds` 默认 300、上限 1800；工具超时 900s，避免被提前掐断。
-
-### 未做
-
-- 长视频分块续取（当前一次最多 30 分钟音频，超出标 `partial` 且 `transcriptCoverage` 如实给覆盖区间）。
-- 中文繁体→简体的兜底（只在 `language=zh` 时加简体 `initial_prompt`；自动检测到 zh 时没有二次纠正）。
-- ASR 结果缓存（同一视频重复调用会重新转写）。
+- `faster-whisper 1.2.1`（venv `D:\tools\asr\.venv`，模型 `D:\tools\asr\models`，默认 `small`，CPU int8，自动语言）。
+- 中文 90s 55.7s（`avg_logprob -0.20`）；英文 60s 23.5s（-0.075，识别为 en）。
+- 强制 `language=zh` 会把英文旁白解码成乱码 —— 默认已改 `auto`。
+- 只有 CLI 能调（`tests/manual-asr.mjs`）；Stage 2 工具、预算、缓存都还没做。

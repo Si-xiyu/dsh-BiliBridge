@@ -48,10 +48,13 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 - 读：当前账号、视频元数据与统计、投稿列表、用户主页、搜索（视频/用户）、评论（含楼中楼）、动态（用户/关注流）
 - 集合：稍后观看列表、收藏夹与内容
 - 写（需审批）：稍后观看增删、收藏/取消、点赞/取消
-- 视频理解：
-  - `bilibili_extract`：Stage 1 证据包（字幕/弹幕/评论/封面 + 故事板九宫格）
-  - `bilibili_inspect`：Stage 2 定向补帧，**默认 ffmpeg 精确抽帧**（误差 ≤100ms），
-    没有 ffmpeg / 播放地址失效时自动降级故事板，并返回真实 `maxErrorMs`
+- 视频理解（Fast Path / Deep Path，2026-11-02 定稿）：
+  - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 封面 / 故事板九宫格
+    （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
+    **不跑 ASR、不跑 OCR**；没有平台字幕就 `subtitles.status="empty"`。
+  - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差 ≤100ms），
+    失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）。
+  - `bilibili_transcribe`（Stage 2）：**尚未实现**（下一轮），底层 faster-whisper 适配器已可用。
 
 ## 4. 本机验证记录
 
@@ -87,7 +90,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 4.3 单测
 
-`npm test` → **38/38**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
+`npm test` → **46/46**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
 
 ### 4.4 Windows 登录态全量验收（2026-11-02）
 
@@ -137,40 +140,41 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   `fallbackReason`；精度不再写死，故事板按 `index` 中位间距算 `maxErrorMs`；补帧目标超出有效格数时标 `reused`。
 - 分 P 不存在时**报错**而不是静默用第 1 个分 P（`evidence.mjs` / `extract.mjs`）。
 
-### 5.3 字幕字段：platform → ASR →（可选）OCR
+### 5.3 Stage 1 瘦身（M8.5）
 
-**定位**：字幕只是信息源之一；ASR 覆盖绝大多数视频，OCR 是可选的补充。
+- `bilibili_extract` 不再跑 ASR/OCR：删掉 `subtitleSource` / `asrMaxSeconds` / `asrLanguage` / `include.ocr`。
+- 字幕只有平台一路：UP 主上传优先，其次 AI 字幕；没有就 `subtitles.status="empty"`（`insufficient` 这个
+  Stage 2 结论从 Stage 1 移除）。
+- 覆盖度改为**区间并集**（`coverageRatio`），不再用"最后一条结束时间"（中间挖空会高估）。
+- 新增线索字段：`gaps[]`（`no_subtitles` / `subtitles_partial` / `no_danmaku` / `no_comments` / `no_visual`）、
+  `suggestedWindows[]`（弹幕密度峰值前 3，纯计算）、`evidenceLevel`（`rich` / `text-only` / `thin`）。
+- `schemaVersion` 升到 `2`。实测：有字幕视频 411ms（level=rich）、无字幕视频 831ms（level=text-only）。
 
-- **`subtitleSource` 参数**（`bilibili_extract`）：`auto`（默认，平台→ASR）/ `platform` / `asr` / `ocr` / `none`。
-  Agent 可以先用 `asr`，效果差再以 `ocr` 复调一次。
-- **统一字段**：`data.transcript[]` 每条带 `origin: 'platform' | 'asr' | 'ocr'`；
-  `data.subtitleSource` / `data.subtitleStatus` / `data.attempts[]`（每路试过什么、为什么失败）。
-- **状态语义**：`ok` / `partial`（截断） / `empty`（只要平台字幕而它为空） / `insufficient`（三路都没有可用文本）。
-  `insufficient` 不是错误，是"这个视频确实没有可读文本"，交给 Stage 2 判断。
+### 5.4 故事板多雪碧图（M8.6）
 
-### 5.4 ASR（主线，M8.3）
+- B站 长视频的故事板是**多张雪碧图**（55 分钟视频 `images=4`、`index=397`），
+  `index[i]` 跨图连续编号：`sprite = floor(i/(cols*rows))`。
+- 旧实现只读 `images[0]` 且把格数夹在 100 格 → 九宫格只覆盖前 816s（全片 1/4）；
+  `inspect` 兜底更糟——请求 2000s 会静默落到第 99 格（816s）却标成请求时间。
+- 现在：`locateStoryboardOrder` 跨全部 index 二分定位，`loadStoryboardSprite` 按图 24h 缓存，
+  概览跨全部雪碧图均匀取 9 格并返回 `coverage` / `spritesUsed`。
+- 实测：概览 `coverage 0–3289s`、`spritesUsed=4`；2000s/3200s 分别落到第 3/4 张图。
 
-- `lib/media/asr_worker.py`：faster-whisper，CPU `int8`，默认 `small`，`vad_filter`；**默认自动检测语言**（强制 zh 会把英文旁白解码成乱码），中文时加简体 `initial_prompt`。
-  **绕开 PyAV 解码**：用标准库 `wave` 读 16k/单声道/PCM16 成 numpy 数组再喂模型（`av 19 + faster-whisper 1.2.1` 的
-  `metadata_errors` 参数不兼容，直接调库会 TypeError）。
-- `lib/media/asr.mjs`：运行时解析（`BILI_ASR_PYTHON` → `config.json#asrPython` → `D:\tools\asr\.venv`）、
-  超时/取消/子进程清理、`judgeTranscript` 置信度判定（`avg_logprob` / 低置信占比）。
-- 接入 `buildEvidence`：没有平台字幕时自动转写；结果进统一 `transcript`，`origin: 'asr'`。
-- 实测（`BV1KDNA6eEgr`，90s 音频）：`small` 55.7s，48 段，`avgLogprob=-0.20`，
-  文本质量可用（"我们中出了一个叛徒的后门 / 花费订阅的 Cloud Code"）。
-- **OCR 降级为可选**：默认不跑；只有 `subtitleSource='ocr'` 或 `include.ocr=true` 才跑，
-  引擎仍是 Windows 自带 `Windows.Media.Ocr`（零安装），不再投入底部字幕带的复杂优化。
+### 5.5 ASR 适配层（M8.3a，已可用但尚未接工具）
 
+- `lib/media/asr_worker.py` + `lib/media/asr.mjs`：faster-whisper（CPU int8、默认 `small`、自动语言、
+  `vad_filter`），绕开 PyAV 解码（用标准库读 16k 单声道 wav 成 numpy 数组）。
+- 实测：中文 90s 55.7s（`avg_logprob -0.20`）、英文 60s 23.5s（`-0.075`，自动识别为 `en`）。
+- 目前**只有 CLI/单测能调用**（`tests/manual-asr.mjs`），还没包成 Stage 2 工具，也没有预算与缓存。
 ## 6. 还没做的（按顺序）
 
-1. **长视频 ASR**：`small` 在本机约 0.3–0.6× 实时（90s 音频 ≈ 56s）。当前用 `asrMaxSeconds`（工具默认 300s、上限 1800s；工具超时 900s）截断并标 `partial`，
-   分块续取 / 后台任务尚未做——这是已知风险，暂不优化。
-   已探明本机有 SAPI `zh-CN` 引擎（零安装，质量一般）与 `lib/media/sapi-asr.ps1` 探针；
-   尚未接入证据链，也还没决定用 SAPI 还是 whisper.cpp / sherpa-onnx。
-2. **真实写操作**：点赞/收藏/稍后观看的写路径从未在真实账号执行过（只做过 dry-run）。
-3. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新重试、字幕 800 条续取、二阶段强制（`gaps` 字段）。
-4. **画质**：未登录只有 480P；1080P 需要登录 + `fourk`——OCR 的识别质量直接受它影响。
-
+1. **Stage 2 工具**（下一轮）：`bilibili_transcribe`（默认 30s 窗口、上限 300s；可选窗口连续 OCR）+
+   `inspect` 的指定帧 OCR + `bundleId` 透传。
+2. **常驻 Python worker**：懒启动、空闲退出、崩溃重启、并发与超时控制（30s 窗口从 ~25s 降到 ~12s）。
+3. **预算与缓存**：`bundleId + TTL` 记账（轮次与音频秒数独立计算），ASR/OCR 持久化缓存，命中不扣预算。
+4. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
+5. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
+6. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。

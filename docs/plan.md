@@ -1,45 +1,54 @@
 # 实施计划（v1）
 
-## 视频处理管线（2026-11-02 定稿）
+## 视频处理管线（2026-11-02 定稿：Fast Path / Deep Path）
 
-**定位**：这是个 **B站操作插件**，视频理解只是其中一项能力，不要过度投入。
-字幕只是**信息源之一**，不是"视频理解"本身；Stage 1 负责收集，Stage 2 负责判断。
+**定位**：这是个 **B站操作插件**，视频理解只是其中一项能力。
+把"低成本信息获取"和"高成本深度分析"彻底分开，避免 Stage 1 变成慢查询。
 
 ```
-Stage 1  extract：多来源收集
-  元信息 / 弹幕 / 评论 / 封面 / 故事板九宫格        ← 便宜，永远做
-  字幕字段：platform → asr → (可选) ocr → insufficient
-  每路独立成败，单独记状态；失败降级为带 note 的空来源
+Stage 1  bilibili_extract —— Fast Path，秒级、与视频长度基本无关
+  元信息 / 平台字幕（UP 主上传优先，其次 AI）/ 弹幕密度+样本 / 热评+最新 / 封面 / 故事板九宫格
+  没有平台字幕 → subtitles.status = "empty"（是事实，不是错误）
+  附带线索：gaps[] / suggestedWindows[] / evidenceLevel
 
-Stage 2  inspect：agent 判断
-  读证据包 → 判断这是口播 / 演示 / 纯画面 / PPT
-  → 决定要不要定点补帧，或对某一帧再要 OCR
-  → 结论区分"字幕说的""画面显示的""评论认为的"
+Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
+  bilibili_inspect      定点取真实帧；可选对该帧做 OCR
+  bilibili_transcribe   指定窗口 ASR；可选窗口内连续硬字幕 OCR
+  返回剩余预算，Agent 自己决定要不要继续
 ```
 
-### 字幕字段的填法
+### 已确认的架构决策
 
-| 顺序 | 来源 | 默认 | 说明 |
-| --- | --- | --- | --- |
-| 1 | `platform` | ✅ 自动 | 平台字幕（官方/AI）。**登录才有**，匿名 0 条不代表视频没字幕 |
-| 2 | `asr` | ✅ 自动（无平台字幕时） | **本地 faster-whisper**，借鉴 dsh-bili-scroll：CPU `int8`、默认 `small`、`vad_filter`、模型缓存放插件地盘 |
-| 3 | `ocr` | ⬜ 仅显式请求 | Windows 自带 `Windows.Media.Ocr`（零安装）。底部字幕带 + 屏幕文字都可以，但不追求"完整台词" |
-| 4 | `insufficient` | — | 都拿不到可用文本：如实标记 + 记录试过哪几路、各自失败原因 |
+| 决策 | 内容 |
+| --- | --- |
+| Stage 1 不做 | ASR、OCR、整片转写；也不因缺字幕而阻塞 |
+| 平台字幕优先级 | UP 主上传字幕 > B站 AI 字幕（`ai-zh`） |
+| ASR 默认窗口 | 30 秒；单次最大 300 秒；模型可选更长 |
+| ASR 总预算 | 900 秒**未缓存**音频（不硬编码，后续进设置） |
+| VAD 前置探针 | 不加入（保留模型自身的 `vad_filter`） |
+| 工具形态 | `inspect` 与 `transcribe` 两个独立工具 |
+| OCR | 保留两种模式：**指定帧 OCR** 与**窗口连续硬字幕 OCR**，同属 Stage 2 可选能力 |
+| 封面 | 不降采样（Stage 1 冷启动约 3.3s 可接受） |
+| 预算归属 | `bundleId` + TTL 复用，避免不同分析任务长期共享同一视频预算 |
+| 轮次与预算 | 独立计算：轮次防跑飞（默认 6），预算防烧钱（900s 未缓存音频） |
+| 缓存 | ASR/OCR 持久化缓存；命中不消耗 ASR 预算 |
+| 常驻 worker | 接受：懒启动、空闲退出、崩溃重启、超时与并发控制 |
+| 证据字段 | `evidenceLevel`：`rich` / `text-only` / `thin` |
+| 字幕覆盖 | 按**区间并集**计算，不是"最后一条字幕的结束时间" |
 
-- **可复调用**：`extract(..., subtitleSource)` 允许 Agent 先 `asr`、效果差再以 `ocr` 复调一次；
-  同 `(bvid, cid, source)` 命中缓存，不重复付费。
-- **`insufficient` 不是错误**：它表示"这个视频确实没有可读文本"（符号动画、纯风景、无配音幻灯片），
-  由 Stage 2 决定怎么处理，Stage 1 不猜。
-- **OCR 不追求完整**：抽 N 个时间点能读到几行就读几行，读不到就是没有。
-  不为"纯文字视频"做整片识别——那是过度投入，交给 Stage 2 定点看帧。
+### 线索字段
 
-### 已知风险（保留，后续优化）
+- `gaps[]`：`no_subtitles` / `subtitles_partial` / `no_danmaku` / `no_comments` / `no_visual`
+- `suggestedWindows[]`：弹幕密度峰值的前 3 个窗口（纯计算，不额外请求；只是候选，不是指令）
+- `evidenceLevel`：`rich`（字幕覆盖 ≥80%）/ `text-only`（无字幕但有文字来源）/ `thin`
 
-- 长视频 ASR 慢（`small` ≈ 0.05–0.1× 实时）。先做硬上限 + `partial` + `continuation`，不做复杂调度。
-- 纯画面/无语音内容：ASR 与 OCR 都救不了，靠 Stage 2 的视觉证据。
+### 已知风险（保留）
+
+- Stage 2 的 ASR 在 CPU 上 0.3–0.6× 实时；30s 窗口约 20–25s（常驻 worker 可降到 ~12s）。
+- 纯画面/无语音内容：ASR 与 OCR 都救不了，靠视觉证据。
+- 长视频整片转写不开入口（需要用户显式授权，后续版本）。
 
 ---
-
 ## 里程碑
 
 - [x] M0 项目骨架
@@ -51,16 +60,18 @@ Stage 2  inspect：agent 判断
 - [x] M4 视频提取 Stage 1（字幕/弹幕/评论/封面/九宫格；DSH 内图片已附加）
 - [x] M5 定向补帧 Stage 2（ffmpeg 真抽帧；DSH 内图片已附加）
 - [ ] M6 稍后观看摘要 + 原生提醒
-- [x] M7 部分：安装、文档、单元测试 42/42；打包发布未做
+- [x] M8.5 Stage 1 瘦身：摘掉 ASR/OCR、字幕只留平台、新增 gaps/suggestedWindows/evidenceLevel
+- [x] M7 部分：安装、文档、单元测试 46/46；打包发布未做
 - [x] M8.0 Windows 平台适配（请求指纹统一、凭据 ACL、跨平台路径；本机匿名回归通过）
 - [x] M8.1 ffmpeg 真抽帧（playurl → `-ss` 精确抽帧；宿主内 `source=ffmpeg`）
+- [x] M8.6 故事板多雪碧图（长视频概览覆盖全时间轴；故事板兜底跨图定位）
 - [ ] M8.1b 概览也用真帧（场景检测）+ `blurdetect` 挑最清晰帧（当前概览仍用故事板九宫格）
-- [x] M8.2 OCR（Windows 自带，零安装）——**降级为可选能力**，不再自动跑、不再投入底部字幕带优化
-- [ ] **M8.3 ASR（当前主线）**：faster-whisper 本地转写
-  - [ ] M8.3a 适配器接口 + Python worker（`transcribe(audio)` → 带时间戳的段落）
-  - [ ] M8.3b extract 接入：无平台字幕时自动 ASR；`subtitleSource` 参数支持复调用
-  - [ ] M8.3c 可靠性：超时/取消/子进程清理、模型缓存、`partial`/`continuation`、失败如实上报
-  - [ ] M8.3d 真实验收：中英各一条、长视频一条、无语音一条
+- [x] M8.2 OCR（Windows 自带，零安装）——**移到 Stage 2**，作为 `inspect` 的可选能力，Stage 1 不跑
+- [x] **M8.3 ASR 适配层**：faster-whisper（CPU int8 / small / 自动语言）已可用，待包成 Stage 2 工具
+  - [x] M8.3a 适配器接口 + Python worker（`transcribe(audio)` → 带时间戳的段落）
+  - [ ] M8.3b `bilibili_transcribe` 工具：窗口化（默认 30s、上限 300s）+ 可选窗口 OCR
+  - [ ] M8.3c 常驻 worker：懒启动、空闲退出、崩溃重启、并发与超时控制
+  - [ ] M8.3d 预算（bundleId + TTL）与 ASR/OCR 持久化缓存；命中不扣预算
 
 ## v1 工具（18）
 
