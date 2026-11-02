@@ -145,7 +145,10 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - `bilibili_extract` 不再跑 ASR/OCR：删掉 `subtitleSource` / `asrMaxSeconds` / `asrLanguage` / `include.ocr`。
 - 字幕只有平台一路：UP 主上传优先，其次 AI 字幕；没有就 `subtitles.status="empty"`（`insufficient` 这个
   Stage 2 结论从 Stage 1 移除）。
-- 覆盖度改为**区间并集**（`coverageRatio`），不再用"最后一条结束时间"（中间挖空会高估）。
+- 覆盖度拆成两个指标，别混用：
+  - `subtitles.coverage`：**区间并集 / 时长**（句子之间的气口会算进去，正常视频 0.95–0.99）。
+  - `subtitles.coveredToMs` 与状态判定用的 extent：**完整字幕轨末端 / 时长**（判"轨道有没有断在中间"）。
+- "只返回前 800 条"是第三件事，用 `truncated` + `SUBTITLE_TRUNCATED` 单独提示，不并进 `partial`。
 - 新增线索字段：`gaps[]`（`no_subtitles` / `subtitles_partial` / `no_danmaku` / `no_comments` / `no_visual`）、
   `suggestedWindows[]`（弹幕密度峰值前 3，纯计算）、`evidenceLevel`（`rich` / `text-only` / `thin`）。
 - `schemaVersion` 升到 `2`。实测：有字幕视频 411ms（level=rich）、无字幕视频 831ms（level=text-only）。
