@@ -7,6 +7,13 @@ import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
 import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
 import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
 import { judgeTranscript, segmentsToEntries } from '../../lib/media/asr.mjs';
+import {
+  locateStoryboardOrder,
+  pickOverviewOrders,
+  spriteIndexOfOrder,
+  tileIndexOfOrder,
+  validTileCount,
+} from '../../lib/media/frames.mjs';
 import { resetFfmpegCache, resolveToolchain } from '../../lib/media/ffmpeg.mjs';
 
 const nav = {
@@ -131,6 +138,46 @@ test('字幕带采样点：数量夹在 2–24、均匀、落在片内', () => {
   assert.equal(planSamples({ durationMs: 600_000, count: 99 }).length, 24, '太多会被压到 24');
   assert.throws(() => planSamples({ durationMs: 0 }), (error) => error.code === 'INVALID_ARGUMENT');
   assert.throws(() => planSamples({ durationMs: NaN }), (error) => error.code === 'INVALID_ARGUMENT');
+});
+
+test('故事板多雪碧图：格→图/格 映射与跨图定位', () => {
+  const meta = {
+    images: ['a', 'b', 'c'],
+    cols: 10,
+    rows: 10,
+    index: Array.from({ length: 250 }, (_, i) => i),
+  };
+  assert.equal(validTileCount(meta), 250);
+  assert.equal(spriteIndexOfOrder(meta, 0), 0);
+  assert.equal(spriteIndexOfOrder(meta, 99), 0);
+  assert.equal(spriteIndexOfOrder(meta, 100), 1);
+  assert.equal(spriteIndexOfOrder(meta, 249), 2);
+  assert.equal(tileIndexOfOrder(meta, 150), 50);
+  assert.equal(tileIndexOfOrder(meta, 249), 49);
+
+  // 关键回归：长视频 2000s 必须落到第 3 张图，而不是第一张图的最后一格（816s）。
+  assert.equal(locateStoryboardOrder(meta, 2000), 249);
+  assert.equal(spriteIndexOfOrder(meta, locateStoryboardOrder(meta, 2000)), 2);
+  assert.equal(locateStoryboardOrder(meta, 149), 149);
+  assert.equal(locateStoryboardOrder(meta, 151), 151);
+});
+
+test('故事板概览取样覆盖整条时间轴', () => {
+  const meta = {
+    images: ['a', 'b', 'c'],
+    cols: 10,
+    rows: 10,
+    index: Array.from({ length: 250 }, (_, i) => i),
+  };
+  const orders = pickOverviewOrders(meta, 9);
+  assert.equal(orders.length, 9);
+  assert.equal(orders[0], 0);
+  assert.equal(orders.at(-1), 249, '末格应落在最后一张图，而不是第一张图的第 99 格');
+  for (let i = 1; i < orders.length; i += 1) assert.ok(orders[i] > orders[i - 1], '取样点应递增');
+
+  const single = { images: ['a'], cols: 10, rows: 10, index: Array.from({ length: 40 }, (_, i) => i) };
+  const singleOrders = pickOverviewOrders(single, 9);
+  assert.equal(singleOrders.at(-1), 39);
 });
 
 test('ASR 置信度判定：空、低置信、可用三种情况', () => {
