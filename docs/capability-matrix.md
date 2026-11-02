@@ -21,7 +21,8 @@
 | bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
 | bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
 | bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；/x/player/videoshot；/x/v2/reply；comment.bilibili.com/{cid}.xml | **Stage 1 Fast Path**：平台字幕（上传优先、其次 AI）/弹幕/评论/封面/九宫格 + `gaps` / `suggestedWindows` / `evidenceLevel`；**不跑 ASR/OCR**；无字幕时 `subtitles.status=empty`。实测 411–831ms，与视频长度无关 |
-| bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（**多雪碧图**） | 宿主内：`source=ffmpeg`、`accuracy=bounded`、`maxErrorMs=100`、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图定位（55 分钟视频 2000s 落到第 3 张图），`maxErrorMs` 如实报告 |
+| bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（多雪碧图）；OCR 走 Windows.Media.Ocr | 宿主内：`source=ffmpeg`、`accuracy=bounded`、`maxErrorMs=100`、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图；`ocr=true` 对返回帧批量识别（一次 PowerShell），`subtitleWindow` 走窗口连续字幕 OCR（跳过超限长图） |
+| bilibili_transcribe | verified（本机进程内） | /x/player/wbi/playurl（取音频流）+ 本地 faster-whisper | 20s 窗口 20.6s 返回 9 段中文、`verdict=ok`、时间戳落在原视频轴；窗口越界与非法参数在取流前报 INVALID_ARGUMENT |
 | bilibili_search | verified（独立进程） | /x/web-interface/wbi/search/type | 视频和用户搜索均 20 条；真实用户空结果通过；未重启宿主 |
 | bilibili_comments | verified（独立进程）；WBI 降级 limited | view → /x/v2/reply；缺少预览时 /x/v2/reply/reply；必要时 /x/v2/reply/wbi/main | 热门 20 条及楼中楼；最新第二页 3 条。真实调用未触发 WBI 降级，降级只做模拟验证且只支持第一页 |
 | bilibili_user_profile | verified（独立进程） | /x/space/wbi/acc/info → /x/relation/stat → /x/space/wbi/arc/search | 真实主页、粉丝、关注、2193 条投稿计数返回；空间风控直接抛错，无重试循环 |

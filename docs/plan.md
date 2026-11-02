@@ -61,15 +61,15 @@ Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
 - [x] M5 定向补帧 Stage 2（ffmpeg 真抽帧；DSH 内图片已附加）
 - [ ] M6 稍后观看摘要 + 原生提醒
 - [x] M8.5 Stage 1 瘦身：摘掉 ASR/OCR、字幕只留平台、新增 gaps/suggestedWindows/evidenceLevel
-- [x] M7 部分：安装、文档、单元测试 46/46；打包发布未做
+- [x] M7 部分：安装、文档、单元测试 61/61；打包发布未做
 - [x] M8.0 Windows 平台适配（请求指纹统一、凭据 ACL、跨平台路径；本机匿名回归通过）
 - [x] M8.1 ffmpeg 真抽帧（playurl → `-ss` 精确抽帧；宿主内 `source=ffmpeg`）
 - [x] M8.6 故事板多雪碧图（长视频概览覆盖全时间轴；故事板兜底跨图定位）
 - [ ] M8.1b 概览也用真帧（场景检测）+ `blurdetect` 挑最清晰帧（当前概览仍用故事板九宫格）
-- [x] M8.2 OCR（Windows 自带，零安装）——**移到 Stage 2**，作为 `inspect` 的可选能力，Stage 1 不跑
+- [x] M8.2 OCR（Windows 自带，零安装）——已移到 Stage 2：`inspect` 支持整帧/字幕带 OCR 与窗口连续字幕 OCR
 - [x] **M8.3 ASR 适配层**：faster-whisper（CPU int8 / small / 自动语言）已可用，待包成 Stage 2 工具
   - [x] M8.3a 适配器接口 + Python worker（`transcribe(audio)` → 带时间戳的段落）
-  - [ ] M8.3b `bilibili_transcribe` 工具：窗口化（默认 30s、上限 300s）+ 可选窗口 OCR
+  - [x] M8.3b `bilibili_transcribe` 工具：窗口化（默认 30s、上限 300s）+ 时间戳回原始轴
   - [ ] M8.3c 常驻 worker：懒启动、空闲退出、崩溃重启、并发与超时控制
   - [ ] M8.3d 预算（bundleId + TTL）与 ASR/OCR 持久化缓存；命中不扣预算
 

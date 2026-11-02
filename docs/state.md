@@ -42,7 +42,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 
 ## 3. 现在能做什么
 
-18 个工具在宿主内全部可见（本会话已实测）。状态以 `docs/capability-matrix.md` 为准。摘要：
+19 个工具（新增 `bilibili_transcribe`）。状态以 `docs/capability-matrix.md` 为准。摘要：
 
 - 认证：扫码登录、状态、退出（凭据仅当前用户可读：POSIX 0600 / Windows icacls）
 - 读：当前账号、视频元数据与统计、投稿列表、用户主页、搜索（视频/用户）、评论（含楼中楼）、动态（用户/关注流）
@@ -53,8 +53,8 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
     （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
     **不跑 ASR、不跑 OCR**；没有平台字幕就 `subtitles.status="empty"`。
   - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差 ≤100ms），
-    失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）。
-  - `bilibili_transcribe`（Stage 2）：**尚未实现**（下一轮），底层 faster-whisper 适配器已可用。
+    失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；可选 `ocr`（整帧/字幕带）与 `subtitleWindow` 窗口连续 OCR。
+  - `bilibili_transcribe`（Stage 2）：窗口化 ASR，默认 30s、上限 300s，时间戳落在原视频轴；越界窗口报 INVALID_ARGUMENT。
 
 ## 4. 本机验证记录
 
@@ -171,13 +171,12 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 目前**只有 CLI/单测能调用**（`tests/manual-asr.mjs`），还没包成 Stage 2 工具，也没有预算与缓存。
 ## 6. 还没做的（按顺序）
 
-1. **Stage 2 工具**（下一轮）：`bilibili_transcribe`（默认 30s 窗口、上限 300s；可选窗口连续 OCR）+
-   `inspect` 的指定帧 OCR + `bundleId` 透传。
-2. **常驻 Python worker**：懒启动、空闲退出、崩溃重启、并发与超时控制（30s 窗口从 ~25s 降到 ~12s）。
-3. **预算与缓存**：`bundleId + TTL` 记账（轮次与音频秒数独立计算），ASR/OCR 持久化缓存，命中不扣预算。
-4. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
-5. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
-6. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
+1. **常驻 Python worker**：懒启动、空闲退出、崩溃重启、并发与超时控制（30s 窗口从 ~25s 降到 ~12s）。
+2. **预算与缓存**：`bundleId + TTL` 记账（轮次与音频秒数独立计算），ASR/OCR 持久化缓存，命中不扣预算。
+3. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
+4. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
+5. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
+6. **文档**：`docs/agents.md`（子任务分工与 worktree 流程）尚未写。
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。
