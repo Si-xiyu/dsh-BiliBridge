@@ -203,6 +203,20 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 实测（宿主进程内直调 handler）：`status` 200 / 604–1121ms，无凭据泄漏；`avatar` 200、56KB，二次 59–63ms 命中缓存；非 GET 405。
 - 生效方式：路由在插件加载时注册，**需要重启 DSH**；之后改前端只刷新页面即可。
 
+## 5.8 设置页 P2：可写设置（2026-11-02）
+
+- 新增 `lib/media/settings-merge.mjs`：白名单合并（budget/cache/asr/ocr）、严格类型与范围、
+  ASR 两窗口关系校验、`trustedRequest` 来源判定。
+- `GET/POST /bilibili-bridge/api/settings`（同一 path 一个 handler）：
+  - POST 先做 fail-closed 来源校验（回环远端 + 回环 Host + 同源 Origin/Referer，Host 用来源协议归一化），
+    再限 64KB、要求请求体是对象；`revision` 不一致返回 409 `STALE_REVISION`。
+  - 保存串行化（进程内队列），校验失败整份不写；配置 JSON 损坏时 409 `CONFIG_CORRUPT` 且拒写。
+  - 写入走 `writeJsonAtomic`（临时文件名带 randomUUID），未知键原样保留，响应只投影已知字段。
+- 页面新增「设置」表单：预算（轮次/音频额度/TTL）、缓存（开关/保留天数）、视频理解（ASR 开关/模型/默认窗口/单次上限/OCR 开关）；
+  只提交改动字段、显示逐条错误、保存成功提示「下一次调用生效」。
+- 实测（临时数据目录直调 handler）：非法值 400 且文件不变；跨站 403；合法保存 200 且 `ffmpegPath`/`note` 保留；响应不含未知字段。
+- 生效方式：路由需要**重启 DSH**；之后改设置即时生效（analysisConfig 每次调用重读）。
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
