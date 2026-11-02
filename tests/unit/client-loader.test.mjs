@@ -73,3 +73,11 @@ test('apply 把 section 注册到 settings.section，标签名是「B站工具�
   assert.equal(options.label(), 'B站工具');
   assert.equal(component, exports.Section);
 });
+test('客户端源码保留中文文案（防止再次被写成问号占位）', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8');
+  for (const word of ['B站工具', '账号', '运行时', '预算', '缓存', '刷新']) {
+    assert.ok(source.includes(word), `client.js 缺少中文文案：${word}`);
+  }
+  assert.ok(!/[?？]{3,}/.test(source), 'client.js 不应该出现连续问号占位');
+});

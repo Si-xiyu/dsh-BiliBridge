@@ -34,6 +34,8 @@ test('status 读取器与纯组装：运行时失败给错误码，账号失败�
   assert.equal(result.runtime.asr.code, 'INTERNAL_ERROR');
   assert.equal(result.account.loggedIn, false);
   assert.equal(result.account.ok, false);
+  assert.equal(result.budget.ok, true);
+  assert.deepEqual(result.budget.items, []);
   assert.equal(result.generatedAt, 'now');
   assert.deepEqual(assembleStatus(result), result);
 });
