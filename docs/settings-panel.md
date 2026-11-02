@@ -334,3 +334,61 @@ registerSettingsRoutes(ctx);
 - [dsh-market](https://github.com/dsh-market/dsh-market)：`package.json` 的 `dsh.client`、打包后的同款包装格式
 - [live2d-pets 设置页调研](https://github.com/cyanfish-x/dsh-live2d-pets/blob/main/docs/research/settings-tab.md)：slot 表、`settingsScope` 的 wire 白名单限制
 - [settings slot 契约](https://github.com/omdsh-dev/dsh-llm-fallbacks/blob/main/.mstar/knowledge/architecture-patterns/dsh-settings-slot-contract.md)：`settings.section` / `settings.plugin.item` 的注册语义
+---
+
+## 12. 2026-11-02 追加确认（实现以此为准）
+
+### 12.1 参战角色与决策
+
+| 决策 | 结果 |
+| --- | --- |
+| 关闭 ASR / OCR 的语义 | **硬禁用**：`transcribe` 抛 `ASR_DISABLED`，`inspect(ocr|subtitleWindow)` 抛 `OCR_DISABLED` |
+| ASR 失败自动试 OCR | **不做**，OCR 仍然只能显式开启 |
+| 窗口旋钮 | **两个**：`asr.defaultWindowSeconds`（10–120）+ `asr.maxWindowSeconds`（30–600）；任务总额度复用 `budget.audioSecondsLimit`，不再单开 |
+| 账号操作 | 退出登录 + 重新扫码；**不单独做**“切换账号”按钮（它等于退出后扫码） |
+| 头像 | **服务端代理 + 缓存**：`GET $API/avatar`，宿主带 Referer 拉图并落盘 |
+
+### 12.2 配置契约（已实现在 `lib/media/analysis-config.mjs`）
+
+```jsonc
+{
+  "budget": { "ttlMs": 7200000, "roundsLimit": 6, "audioSecondsLimit": 900 },
+  "cache":  { "enabled": true, "ttlMs": 2592000000 },
+  "asr":    { "enabled": true, "model": "small", "defaultWindowSeconds": 30, "maxWindowSeconds": 300 },
+  "ocr":    { "enabled": true }
+}
+```
+
+- 旧顶层 `asrModel` 仍兼容（等价于 `asr.model`）。
+- `maxWindowSeconds < defaultWindowSeconds` 时读取端会自动抬高，避免“不传窗口就必然越界”。
+- 生效时机：预算/缓存/开关/窗口都是**每次调用重读**，改完即生效；`asr.model` 变更会让常驻 worker 下次重载模型。
+
+### 12.3 设置页最终字段表
+
+| 分组 | 字段 | 类型 / 范围 | 默认 |
+| --- | --- | --- | --- |
+| 账号（只读） | 昵称 / mid / 等级 / VIP / 头像 / 凭据路径 / 是否已登录 | — | — |
+| 账号（操作） | 退出登录、重新扫码登录 | 按钮 | — |
+| 运行时（只读） | ffmpeg 路径与可用性、ASR Python、ASR 模型、worker 状态、OCR 引擎 | — | — |
+| 预算 | `budget.roundsLimit` | 整数 1–50 | 6 |
+| 预算 | `budget.audioSecondsLimit` | 整数 60–7200 | 900 |
+| 预算 | `budget.ttlMs` | 1–24 小时 | 2 |
+| 缓存 | `cache.enabled` | 布尔 | 开 |
+| 缓存 | `cache.ttlMs` | 1–90 天 | 30 |
+| 视频理解 | `asr.enabled` | 布尔 | 开 |
+| 视频理解 | `asr.model` | tiny/base/small/medium | small |
+| 视频理解 | `asr.defaultWindowSeconds` | 整数 10–120 | 30 |
+| 视频理解 | `asr.maxWindowSeconds` | 整数 30–600 | 300 |
+| 视频理解 | `ocr.enabled` | 布尔 | 开 |
+| 维护 | 清理缓存（asr / 画面 / 全部） | 按钮 | — |
+
+### 12.4 参考实现（实机读过，非猜测）
+
+`dsh-bili-whale` 的 `lib/client.js`（仓库 `Alterssss/dsh-bili-whale`）确认了这些细节：
+
+- 包装：`window.__ModuleLoader__.load({ id, factory })`，`factory(require)` 里 `require("react")`，**无 JSX**。
+- 注册：`const inject = ["slots"]`；`ctx.effect(() => ctx.slots.inject("settings.section", () => ctx.slots.register({ name, id, order, label }, Section), "..."), "...")`。
+- 数据：全部走同源 `fetch("/dsh-bili/api/*")`；保存时提交**整份配置**（宿主浅合并，未显示字段不会被抹掉）。
+- CSS：只用宿主变量 `--dsw-alias-label-primary` / `-border-l2` / `-label-tertiary` / `-brand-primary` / `-label-primary-foreground`。
+- 扫码登录：`POST /auth/qr/start` → 轮询 `POST /auth/qr/poll {id}` → `POST /auth/qr/cancel`，成功后用返回的 account 刷新页面状态。
+- 主按钮文字色要用 `--dsw-alias-label-primary-foreground`（深色主题下 `brand-primary` 近白，写死 `#fff` 会白底白字）。
