@@ -74,29 +74,123 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
   assert.equal(code, 405);
 });
 
-async function callSettings(method, body='', headers={}, remoteAddress='127.0.0.1', current={}) {
- const routes=[]; const writes=[];
- registerSettingsRoutes({inject(names,cb){cb({webServer:{register(route){routes.push(route);return ()=>{};}}});}},
- {readJson:async()=>current,writeJsonAtomic:async(...args)=>writes.push(args)});
- const req={method,headers,socket:{remoteAddress},async *[Symbol.asyncIterator](){yield Buffer.from(body);}};
- let code,result;
- await routes[2].handler(req,{writeHead(value){code=value;},end(value){result=JSON.parse(value);}});
- return {code,result,writes};
+const TRUST = { host: '127.0.0.1:1983', origin: 'http://127.0.0.1:1983' };
+
+function harness(current, { corrupt = false, missing = false } = {}) {
+  const state = { value: current };
+  const routes = [];
+  const writes = [];
+  registerSettingsRoutes(
+    { inject(names, callback) { callback({ webServer: { register(route) { routes.push(route); return () => {}; } } }); } },
+    {
+      readFile: async () => {
+        if (missing) { const error = new Error('missing'); error.code = 'ENOENT'; throw error; }
+        if (corrupt) return '{ broken';
+        return JSON.stringify(state.value);
+      },
+      writeJsonAtomic: async (path, value) => { state.value = value; writes.push([path, value]); },
+    },
+  );
+  return { handler: routes[2].handler, writes };
 }
-test('不可信来源、超限与非法 JSON 均不写入',async()=>{
- for(const [body,headers,remote,code] of [['{}',{},'10.0.0.1',403],['{}',{host:'localhost',origin:'http://evil'},'127.0.0.1',403],['x'.repeat(65537),{},'127.0.0.1',413],['{}',{'content-length':'65537'},'127.0.0.1',413],['bad',{},'127.0.0.1',400]]){
- const result=await callSettings('POST',body,headers,remote); assert.equal(result.code,code);assert.equal(result.writes.length,0);
- }
+
+function fakeReq({ method = 'GET', body, headers = TRUST, remote = '127.0.0.1' } = {}) {
+  const chunks = body === undefined ? [] : [Buffer.from(body)];
+  return {
+    method,
+    headers,
+    socket: { remoteAddress: remote },
+    async *[Symbol.asyncIterator]() { for (const chunk of chunks) yield chunk; },
+  };
+}
+
+async function call(handler, options) {
+  let code;
+  let result;
+  await handler(fakeReq(options), { writeHead(value) { code = value; }, end(value) { result = JSON.parse(value); } });
+  return { code, result };
+}
+
+test('来源校验 fail closed：非回环、缺 Host、缺 Origin、跨源都拒绝', async () => {
+  const { handler, writes } = harness({});
+  const cases = [
+    { headers: TRUST, remote: '10.0.0.1' },
+    { headers: { origin: TRUST.origin } },                        // 缺 host
+    { headers: { host: '127.0.0.1:1983' } },                      // 缺 origin
+    { headers: { host: 'localhost', origin: 'http://evil' } },
+    { headers: { host: 'evil.example', origin: 'http://evil.example' } }, // DNS rebinding 形态
+    { headers: TRUST, remote: '' },
+  ];
+  for (const options of cases) {
+    const { code } = await call(handler, { method: 'POST', body: '{}', ...options });
+    assert.equal(code, 403, JSON.stringify(options));
+  }
+  assert.equal(writes.length, 0);
 });
-test('校验失败不写入，成功保留未知字段并过滤响应',async()=>{
- const current={note:'keep',cookies:{secret:'credential'},ffmpegPath:'local',budget:{roundsLimit:6}};
- const invalid=await callSettings('POST',JSON.stringify({budget:{roundsLimit:999}}),{},undefined,current);
- assert.equal(invalid.code,400);assert.ok(invalid.result.errors.length);assert.equal(invalid.writes.length,0);
- const success=await callSettings('POST',JSON.stringify({budget:{roundsLimit:7}}),{},undefined,current);
- assert.equal(success.code,200);assert.equal(success.writes[0][1].note,'keep');assert.equal(success.writes[0][1].budget.roundsLimit,7);
- assert.equal(JSON.stringify(success.result).includes('credential'),false);
- const get=await callSettings('GET','',{},undefined,current);
- assert.equal(get.code,200);assert.ok(get.result.path.endsWith('config.json'));assert.equal(JSON.stringify(get.result).includes('credential'),false);
- for(const value of [null,[],42]) assert.equal((await callSettings('GET','',{},undefined,value)).code,200);
- assert.equal((await callSettings('PUT')).code,405);
+
+test('请求体超限与非法 JSON 不写入', async () => {
+  const { handler, writes } = harness({});
+  assert.equal((await call(handler, { method: 'POST', body: 'x'.repeat(65537) })).code, 413);
+  assert.equal((await call(handler, { method: 'POST', body: 'x', headers: { ...TRUST, 'content-length': '65537' } })).code, 413);
+  assert.equal((await call(handler, { method: 'POST', body: 'bad' })).code, 400);
+  assert.equal(writes.length, 0);
+});
+
+test('配置文件损坏时拒绝保存，不覆盖原文件', async () => {
+  const { handler, writes } = harness(null, { corrupt: true });
+  assert.equal((await call(handler, { method: 'GET' })).code, 409);
+  assert.equal((await call(handler, { method: 'POST', body: '{}' })).code, 409);
+  assert.equal(writes.length, 0);
+});
+
+test('校验失败不写入；成功保留未知字段、过滤响应并返回 revision', async () => {
+  const current = { note: 'keep', cookies: { secret: 'credential' }, ffmpegPath: 'local', budget: { roundsLimit: 6 } };
+  const { handler, writes } = harness(current);
+  const invalid = await call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 999 } }) });
+  assert.equal(invalid.code, 400);
+  assert.ok(invalid.result.errors.length);
+  assert.equal(writes.length, 0);
+
+  const success = await call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 7 } }) });
+  assert.equal(success.code, 200);
+  assert.equal(success.result.revision.length > 0, true);
+  assert.equal(writes[0][1].note, 'keep');
+  assert.equal(writes[0][1].budget.roundsLimit, 7);
+  assert.equal(JSON.stringify(success.result).includes('credential'), false);
+
+  const get = await call(handler, {});
+  assert.equal(get.code, 200);
+  assert.ok(get.result.path.endsWith('config.json'));
+  assert.equal(JSON.stringify(get.result).includes('credential'), false);
+});
+
+test('旧 revision 提交被拒绝，不覆盖别人刚保存的字段', async () => {
+  const current = { budget: { roundsLimit: 6 } };
+  const { handler, writes } = harness(current);
+  const stale = await call(handler, { method: 'POST', body: JSON.stringify({ revision: 'deadbeef', budget: { roundsLimit: 9 } }) });
+  assert.equal(stale.code, 409);
+  assert.equal(stale.result.error, 'STALE_REVISION');
+  assert.equal(writes.length, 0);
+});
+
+test('并发保存串行化，两次修改都会保留', async () => {
+  const { handler, writes } = harness({ budget: { roundsLimit: 6 } });
+  const [first, second] = await Promise.all([
+    call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 7 } }) }),
+    call(handler, { method: 'POST', body: JSON.stringify({ cache: { enabled: false } }) }),
+  ]);
+  assert.equal(first.code, 200);
+  assert.equal(second.code, 200);
+  assert.equal(writes.length, 2);
+  const final = writes[1][1];
+  assert.equal(final.budget.roundsLimit, 7);
+  assert.equal(final.cache.enabled, false);
+});
+
+test('配置不存在时按空配置处理，PUT 等其它方法 405', async () => {
+  const { handler } = harness(null, { missing: true });
+  const get = await call(handler, {});
+  assert.equal(get.code, 200);
+  assert.deepEqual(get.result.config.budget, {});
+  assert.equal((await call(handler, { method: 'PUT' })).code, 405);
 });

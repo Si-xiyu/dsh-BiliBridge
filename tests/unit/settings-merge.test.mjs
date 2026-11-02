@@ -26,9 +26,21 @@ test('合并后的窗口关系与默认值',()=>{
  assert.deepEqual(mergeWritable({asr:{defaultWindowSeconds:90}},{asr:{defaultWindowSeconds:60,maxWindowSeconds:60}}).errors,[]);
  assert.deepEqual(mergeWritable({}, {asr:{defaultWindowSeconds:120}}).errors,[]);
 });
-test('loopback 与来源检查分支',()=>{
- for(const remoteAddress of ['',undefined,'127.0.0.1','::1','::ffff:127.0.0.1']) assert.equal(trustedRequest({socket:{remoteAddress}}),true);
- assert.equal(trustedRequest({socket:{remoteAddress:'10.0.0.1'}}),false);
- for(const headers of [{host:'localhost:12'},{host:'localhost:12',origin:'http://localhost:12'},{host:'localhost:12',referer:'http://localhost:12/a'},{origin:'invalid'}]) assert.equal(trustedRequest({headers}),true);
- for(const headers of [{host:'localhost',origin:'null'},{host:'localhost',origin:'http://evil'},{host:'localhost',referer:'bad'},{host:'localhost',origin:'http://localhost',referer:'http://evil'}]) assert.equal(trustedRequest({headers}),false);
+test('loopback 与来源检查分支（fail closed）', () => {
+  // 回环 + Host + 同源 Origin 才放行
+  for (const remoteAddress of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+    assert.equal(trustedRequest({ socket: { remoteAddress }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } }), true);
+  }
+  // 缺远端地址、非回环、缺 Host、缺 Origin、跨源、rebinding 形态都拒绝
+  const denied = [
+    { headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
+    { socket: { remoteAddress: '' }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
+    { socket: { remoteAddress: '10.0.0.1' }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
+    { socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://localhost:12' } },
+    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost:12' } },
+    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost', origin: 'http://evil' } },
+    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'evil.example', origin: 'http://evil.example' } },
+    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost:12', referer: 'bad' } },
+  ];
+  for (const request of denied) assert.equal(trustedRequest(request), false, JSON.stringify(request));
 });
