@@ -50,4 +50,7 @@ test('来源比较做归一化：大小写、默认端口、IPv6 展开形式都
   assert.equal(ok({ host: 'localhost:80', origin: 'http://localhost' }), true);
   assert.equal(ok({ host: '[0:0:0:0:0:0:0:1]:1983', origin: 'http://[::1]:1983' }), true);
   assert.equal(ok({ host: 'localhost:1983', origin: 'http://localhost:1984' }), false);
+  // https 的默认端口也要归一化
+  assert.equal(ok({ host: 'localhost:443', origin: 'https://localhost' }), true);
+  assert.equal(ok({ host: 'localhost:443', origin: 'https://localhost:444' }), false);
 });
