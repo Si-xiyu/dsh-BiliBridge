@@ -22,10 +22,12 @@ test('budget and persistent caches (offline)', async (t) => {
         now += 99;
         assert.equal(beginAnalysis({ bvid: 'ttl', cid: 1 }), id);
         assert.equal(snapshot({ bundleId: id }).roundsLimit, 8);
-        const explicit = beginAnalysis({ bvid: 'ttl', cid: 1, bundleId: 'evidence-id' });
-        assert.notEqual(explicit, id);
-        assert.equal(beginAnalysis({ bvid: 'ttl', cid: 1, bundleId: 'evidence-id' }), explicit);
-        assert.throws(() => beginAnalysis({ bvid: 'other', cid: 1, bundleId: explicit }), { code: 'INVALID_ARGUMENT' });
+        // 未知 bundleId 不能开新额度：已有账本就复用同一个（不重置），没有账本就拒绝。
+        assert.equal(beginAnalysis({ bvid: 'ttl', cid: 1, bundleId: 'evidence-id' }), id);
+        assert.throws(() => beginAnalysis({ bvid: 'fresh', cid: 1, bundleId: 'evidence-id' }), { code: 'INVALID_ARGUMENT' });
+        // 已签发的 id 可以继续用于同一视频；换个视频则拒绝。
+        assert.equal(beginAnalysis({ bvid: 'ttl', cid: 1, bundleId: id }), id);
+        assert.throws(() => beginAnalysis({ bvid: 'other', cid: 1, bundleId: id }), { code: 'INVALID_ARGUMENT' });
         now++;
         assert.notEqual(beginAnalysis({ bvid: 'ttl', cid: 1 }), id);
         assert.throws(() => charge({ bundleId: id }), { code: 'BUDGET_EXCEEDED' });

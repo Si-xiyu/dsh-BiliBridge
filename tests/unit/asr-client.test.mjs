@@ -97,6 +97,8 @@ test('崩溃发生在请求已提交之后：不重放、不回退，下一次�
   f.children[0].emit('exit', 1);
   // 请求已经写进 daemon，重试会让同一段音频被算两次；只能如实报错。
   await assert.rejects(job, (error) => code('UPSTREAM_ERROR')(error) && !error.data?.daemonFallback);
+  // submitted 标记告诉上层“这段音频可能真的被算过”，不能退款。
+  await assert.rejects(f.transcribeViaDaemon({ signal: AbortSignal.abort() }), code('CANCELLED'));
   assert.equal(f.children.length, 1);
 
   // 下一次调用应重新启动 daemon，而不是复用已死的进程。

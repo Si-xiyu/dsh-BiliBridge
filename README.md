@@ -7,8 +7,8 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 18 个：**已装进本机 Windows 的 desktop profile，宿主内 18 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
-- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 精确抽帧**（误差 ≤100ms，宿主内实测），没有 ffmpeg 时降级故事板并如实报 `maxErrorMs`。
+- 工具层 19 个：**已装进本机 Windows 的 desktop profile，宿主内 19 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
+- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）与 **窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。
 - 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
 
 ## 外部依赖：ffmpeg（可选，但决定画面质量）

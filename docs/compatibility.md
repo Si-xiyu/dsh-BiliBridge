@@ -32,14 +32,14 @@
 - 媒体请求：图片/字幕/弹幕/故事板原先各用一套请求头或无 Referer → 统一走 `http.mjs`（一套 UA/Referer + 域名白名单）。
 - sharp 渲染 SVG 文字依赖可写的 fontconfig 缓存；受限进程里会打印 `No writable cache directories`，宿主内正常。
 - ffmpeg 9.0.2（gyan essentials，gnutls）**不读 Windows 证书库**：直连 B站 CDN 报 `Peer certificate failed verification`，
-  必须传 `-ca_file`（本机用 `%USERPROFILE%\.dsh\bilibili\cacert.pem`）。路径与 CA 写在
+  必须传 `-ca_file`（轮机用 `%USERPROFILE%\.dsh\bilibili\cacert.pem`）。路径与 CA 写在
   `~/.dsh/bilibili/config.json` 的 `ffmpegPath` / `ffmpegCaFile`。
 - 插件安装方式：`desktop/node_modules/dsh-bilibili-bridge` 目录联接（junction）→ 仓库；
   profile `package.json` 的 `dependencies` 与 `dsh.profile.bundles` 均已登记（备份 `*.bak-20261102`）。
-  改 profile 后宿主动态重载，本轮 18 个工具已在本会话可见。
+  改 profile 后宿主动态重载，轮轮 18 个工具已在轮会话可见。
 - `readJson` 会剥掉 UTF-8 BOM：Windows 工具写出的配置常带 BOM，否则配置会“悄悄不生效”。
 
-## 宿主服务（目标版本）
+## 宿主服务（目标版轮）
 
 - 有：`tools`、`attachments`（`saveImage`）、`agents`（`create/resume` + `followup`）、`approval`、`llm`（`resolveModelInfo`）
 - 无：`sessionController`（Whale 依赖的旧服务）
@@ -48,7 +48,7 @@
 ## 插件加载
 
 - `package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`
-- profile 的 `package.json` 里登记依赖，`dsh.profile.bundles` 增加本包
+- profile 的 `package.json` 里登记依赖，`dsh.profile.bundles` 增加轮包
 - 开发时用 symlink 挂到 `~/.dsh/profiles/node_modules/`
 - **改动 bundle 层后需要重启 DSH**；仅改插件 JS 是否热更新取决于宿主 HMR，未验证
 
@@ -57,4 +57,4 @@
 - 无系统钥匙串：凭据只能用 0600 文件
 - 未登录时 `nav` 返回 `code:-101`，但响应仍带 `wbi_img`；HTTP 层必须 `acceptCodes: [-101]`
 - 空间/动态/私信接口风控重，需在 M1.5 用真实账号探测
-- 本机没有 ffmpeg；Stage 1 的画面部分需要先做依赖体检
+- 轮机没有 ffmpeg；Stage 1 的画面部分需要先做依赖体检

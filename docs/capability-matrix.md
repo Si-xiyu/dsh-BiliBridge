@@ -21,7 +21,7 @@
 | bilibili_favorite_set | implemented | /x/v3/fav/resource/deal | 仅历史 dry-run，真实写入未验收 |
 | bilibili_video_like_set | implemented | /x/web-interface/archive/like | 仅历史 dry-run，真实写入未验收 |
 | bilibili_extract | verified（宿主内） | view；/x/player/wbi/v2；/x/player/videoshot；/x/v2/reply；comment.bilibili.com/{cid}.xml | **Stage 1 Fast Path**：平台字幕（上传优先、其次 AI）/弹幕/评论/封面/九宫格 + `gaps` / `suggestedWindows` / `evidenceLevel`；**不跑 ASR/OCR**；无字幕时 `subtitles.status=empty`。实测 411–831ms，与视频长度无关 |
-| bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（多雪碧图）；OCR 走 Windows.Media.Ocr | 宿主内：`source=ffmpeg`、`accuracy=bounded`、`maxErrorMs=100`、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图；`ocr=true` 对返回帧批量识别（一次 PowerShell），`subtitleWindow` 走窗口连续字幕 OCR（跳过超限长图） |
+| bilibili_inspect | verified（宿主内） | view；/x/player/wbi/playurl（DASH）；ffmpeg `-ss` 抽帧；降级时 /x/player/videoshot（多雪碧图）；OCR 走 Windows.Media.Ocr | 宿主内：`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`（未读 PTS，不声明毫秒上界）、1080P、`imageAttached=true`；故事板兜底跨全部雪碧图；`ocr=true` 对返回帧批量识别（一次 PowerShell），`subtitleWindow` 走窗口连续字幕 OCR（跳过超限长图） |
 | bilibili_transcribe | verified（本机进程内） | /x/player/wbi/playurl（音频流）+ 常驻 faster-whisper worker | 冷启 18.0s → 复用 4.1s；20s 窗口 9 段中文、`verdict=ok`、时间戳在原视频轴；缓存命中约 60ms 且不扣音频预算；越界/非法参数取流前报错；已提交请求失败不重放 |
 | bilibili_search | verified（独立进程） | /x/web-interface/wbi/search/type | 视频和用户搜索均 20 条；真实用户空结果通过；未重启宿主 |
 | bilibili_comments | verified（独立进程）；WBI 降级 limited | view → /x/v2/reply；缺少预览时 /x/v2/reply/reply；必要时 /x/v2/reply/wbi/main | 热门 20 条及楼中楼；最新第二页 3 条。真实调用未触发 WBI 降级，降级只做模拟验证且只支持第一页 |
@@ -99,7 +99,7 @@ Windows 上必须给 CA：该构建用 gnutls 且不读系统证书库，直连 
 | `playurl`（匿名，qn=80） | `dash`，实际 480P，`accept_quality=112/80/64/32/16` |
 | `playurl` 选档 | 不超过请求值的最高档；请求值低于全部档位时给最低档；20 分钟内同 key 命中缓存 |
 | playurl 无可用流 | `CONTENT_UNAVAILABLE`，不返回空 URL |
-| `manual-frames BV1GJ411x7h7 auto 10000 60000` | `source=ffmpeg`、`accuracy=exact`、`maxErrorMs=100`、帧图 39KB |
+| `manual-frames BV1GJ411x7h7 auto 10000 60000` | `source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`、帧图 39KB |
 | 宿主内 `bilibili_inspect` | `source=ffmpeg`、`quality=480P`、`imageAttached=true`，两帧真实画面进上下文 |
 | 强制 `storyboard` | `source=storyboard`、`tileGapMs=6000`、`maxErrorMs=3000`（按 index 中位间距算，不再写死 ±1s） |
 | 补帧目标超过有效格数 | 允许复用但标 `reused: true` |
@@ -123,7 +123,7 @@ Windows 上必须给 CA：该构建用 gnutls 且不读系统证书库，直连 
 | dynamics | 关注流，返回 `dsh:` 游标 |
 | extract | BV1KDNA6eEgr：字幕 `ai-zh` 190 cues 覆盖 100%、弹幕 213、热评、封面 + 九宫格，`imageAttached=true` |
 | extract（长视频） | BV1VZWc6dECG：字幕 `truncated=true`（800 条，覆盖 28:17 / 54:57） |
-| inspect | `source=ffmpeg`、`exact`、`maxErrorMs=100`、**1080P**、`imageAttached=true` |
+| inspect | `source=ffmpeg`、`frame-level`、`maxErrorMs=null`、**1080P**、`imageAttached=true` |
 | 写操作 | 仅 dry-run：bvid→aid 解析正常，未提交写请求 |
 
 **登录态是字幕的前提**：同一视频匿名请求 `player/wbi/v2` 得到 0 条轨道，登录后 190 条。
@@ -155,7 +155,7 @@ Stage 2 由 Agent 按需调用（`inspect` 已就绪，`transcribe` 待实现）
 | 概览覆盖 | 0–3289s（旧实现只到 816s），`spritesUsed=4`，133KB |
 | 兜底定位 | 2000s → 第 3 张图；3200s → 第 4 张图；`maxErrorMs=4000`（格间距 8s） |
 
-### ASR 适配层（尚未接工具）
+### ASR：常驻 worker（已接工具）
 
 - `faster-whisper 1.2.1`（venv `D:\tools\asr\.venv`，模型 `D:\tools\asr\models`，默认 `small`，CPU int8，自动语言）。
 - 中文 90s 55.7s（`avg_logprob -0.20`）；英文 60s 23.5s（-0.075，识别为 en）。

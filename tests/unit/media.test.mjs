@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CookieJar } from '../../lib/bili/http.mjs';
 import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
-import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
+import { medianGapSeconds, maxAbsDeltaMs, normalizeTargets } from '../../lib/media/inspect.mjs';
 import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
 import { judgeTranscript, segmentsToEntries } from '../../lib/media/asr.mjs';
 import { coverageRatio, normalizeCues } from '../../lib/media/timeline.mjs';
@@ -236,6 +236,18 @@ test('suggestedWindows：去重、按时间排序、不改动输入、limit=0 �
   assert.deepEqual(windows.map((w) => w.startSeconds), [0, 30]);
   assert.equal(windows[0].danmakuCount, 9);
   assert.deepEqual(suggestedWindowsFromDensity(density, { limit: 0 }), []);
+});
+
+test('故事板误差用每帧实测偏差，而不是中位间距的一半', () => {
+  // 用户给的反例：index=[0,2,4,6,100]，请求 50s 会落到 6s（偏差 44s）。
+  // 中位间距是 2s，一半只有 1s —— 拿它当“最大误差”会严重低报。
+  const frames = [{ deltaMs: -44000 }, { deltaMs: 0 }];
+  assert.equal(maxAbsDeltaMs(frames), 44000);
+  assert.equal(maxAbsDeltaMs([{ deltaMs: 1200 }]), 1200);
+  assert.equal(maxAbsDeltaMs([]), null);
+  assert.equal(maxAbsDeltaMs([{ deltaMs: null }]), null);
+  // 中位间距仍是“典型值”，与上界分开报告：间距 [2,2,2,94] 的中位数是 2s。
+  assert.equal(medianGapSeconds([0, 2, 4, 6, 100]), 2);
 });
 
 test('ASR 置信度判定：空、低置信、可用三种情况', () => {

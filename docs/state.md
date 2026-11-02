@@ -16,7 +16,7 @@ DSH 插件，把 B站只读能力 + 低风险写操作 + 两阶段视频证据�
 ```
 lib/bili/     B站客户端（不依赖 DSH）：http/wbi/auth/store/api/playurl/collections/comments/dynamics/search/user
 lib/media/    证据生产（不调用模型）：subtitles/danmaku/comments/frames/inspect/evidence/ffmpeg
-lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：18 个工具 + 写操作审批门禁
+lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：19 个工具 + 写操作审批门禁
 bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 ```
 
@@ -52,7 +52,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
   - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 封面 / 故事板九宫格
     （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
     **不跑 ASR、不跑 OCR**；没有平台字幕就 `subtitles.status="empty"`。
-  - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差 ≤100ms），
+  - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差约一帧，不给毫秒上界），
     失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；可选 `ocr`（整帧/字幕带）与 `subtitleWindow` 窗口连续 OCR。
   - `bilibili_transcribe`（Stage 2）：窗口化 ASR，默认 30s、上限 300s，时间戳落在原视频轴；越界窗口报 INVALID_ARGUMENT。
 
@@ -76,13 +76,13 @@ overview    ok  封面 651KB + 九宫格 89KB，0 warning
 toolchain: D:/tools/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe
 ca       : C:/Users/16832/.dsh/bilibili/cacert.pem
 playurl  : dash 480P accept 112/80/64/32/16
-frames   : ffmpeg exact maxErrorMs 100 count 2
+frames   : ffmpeg frame-level maxErrorMs null count 2
 detail   : 10000->10000 60000->60000
 image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 ```
 
 宿主内 `bilibili_inspect({bvid:'BV1GJ411x7h7', timestampsMs:[10000,60000]})`：
-`source=ffmpeg`、`accuracy=exact`、`maxErrorMs=100`、`quality=480P`、`imageAttached=true`，
+`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`（不声明毫秒上界）、`quality=480P`、`imageAttached=true`，
 两张真实画面进入主模型上下文（不是故事板缩略图）。
 
 故事板兜底同样如实：`source=storyboard`、`tileGapMs=6000`、`maxErrorMs=3000`
@@ -108,7 +108,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 | `dynamics` | 关注流 2 条，`dsh:` 游标 | 一致 |
 | `extract`（BV1KDNA6eEgr） | 字幕 `ai-zh` 190 cues 覆盖 100%、弹幕 213、热评含楼中楼、封面 + 九宫格，`imageAttached=true` | 一致 |
 | `extract`（BV1VZWc6dECG，55 分钟） | 字幕 `ok` 但 `truncated=true`（800 条，覆盖到 28:17） | 一致（1576 条截断） |
-| `inspect` | `source=ffmpeg`、`exact`、`maxErrorMs=100`、**1080P**、`imageAttached=true` | Mac 只有故事板，本机更好 |
+| `inspect` | `source=ffmpeg`、`frame-level`、`maxErrorMs=null`、**1080P**、`imageAttached=true` | Mac 只有故事板，本机更好 |
 | 写操作 dry-run（like / wl / fav） | bvid→aid 解析正常，未提交 | 一致 |
 
 **新发现**：匿名请求 `player/wbi/v2` 返回 0 条字幕轨，登录后同一视频有 190 条 —— **字幕列表是登录后才有的**，
@@ -163,13 +163,13 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   概览跨全部雪碧图均匀取 9 格并返回 `coverage` / `spritesUsed`。
 - 实测：概览 `coverage 0–3289s`、`spritesUsed=4`；2000s/3200s 分别落到第 3/4 张图。
 
-### 5.5 ASR 适配层（M8.3a，已可用但尚未接工具）
+### 5.5 ASR：适配层 + 常驻 worker（M8.3a/M8.3c）
 
 - `lib/media/asr_worker.py` + `lib/media/asr.mjs`：faster-whisper（CPU int8、默认 `small`、自动语言、
   `vad_filter`），绕开 PyAV 解码（用标准库读 16k 单声道 wav 成 numpy 数组）。
 - 实测：中文 90s 55.7s（`avg_logprob -0.20`）、英文 60s 23.5s（`-0.075`，自动识别为 `en`）。
 - 已接成 Stage 2 工具 `bilibili_transcribe`，并升级成**常驻 worker**：
-  - 懒启动、空闲 300s 退出、崩溃后下次调用重启、单请求 120s 超时、AbortSignal 取消、串行队列。
+  - 懒启动、空闲 300s 退出、崩溃后下次调用重启、工具整体 600s；client 单请求 120s 超时（可覆盖）、AbortSignal 取消、串行队列。
   - Windows 坑：stdin 保持打开 + 读线程阻塞时，主线程导入 numpy/onnxruntime 这类 C 扩展会死锁；已改为起线程前预加载。
   - 实测：冷启 18.0s → 同 worker 复用 4.1s；缓存命中约 60ms。
 - 预算与缓存：`bundleId` 在 TTL（2h）内按 `(bvid,cid)` 复用，轮次 6 / 音频 900s（可配置）；
@@ -200,7 +200,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 | ffmpeg | 放二进制，写 `config.json#ffmpegPath`（或 `FFMPEG_PATH`） | 画面降级故事板，`inspect` 精度 ±3s |
 | CA 证书 | `cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`） | Windows 上 ffmpeg 连 CDN 报证书失败，同样降级 |
 | B站登录 | 重新扫码（或复制 `credentials.json`，但新 IP 可能触发风控） | 字幕 0 条、稍后观看/收藏全部 `AUTH_REQUIRED` |
-| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主里看不到 18 个工具 |
+| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主里看不到 19 个工具 |
 | 重启宿主 | 插件没有 HMR | 改动不生效，容易出现“脚本结论和宿主不一致” |
 
 平台差异（Windows）：`chmod 0600` 无效 → 用 icacls；`/tmp` 落到盘根 → 用 `os.tmpdir()`；
