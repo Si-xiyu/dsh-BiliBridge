@@ -63,7 +63,7 @@ Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
 - [ ] M6 稍后观看摘要 + 原生提醒
 - [x] M8.5 Stage 1 瘦身：摘掉 ASR/OCR、字幕只留平台、新增 gaps/suggestedWindows/evidenceLevel
 - [x] M9 真实写操作：dry-run 预览 + `intent=apply` 写后回读 + 结果不明时的和解（不盲目重试）
-- [x] M7 部分：安装、文档、单元测试 96/96；打包发布未做
+- [x] M7 部分：安装、文档、单元测试 97/97；打包发布未做
 - [x] M8.0 Windows 平台适配（请求指纹统一、凭据 ACL、跨平台路径；本机匿名回归通过）
 - [x] M8.1 ffmpeg 真抽帧（playurl → `-ss` 精确抽帧；宿主内 `source=ffmpeg`）
 - [x] M8.6 故事板多雪碧图（长视频概览覆盖全时间轴；故事板兜底跨图定位）

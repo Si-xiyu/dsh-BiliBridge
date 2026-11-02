@@ -93,7 +93,15 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 4.3 单测
 
-`npm test` → **46/46**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
+`npm test` → **97/97**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
+
+### 4.5 Stage 2 宿主内验收（2026-11-02 重启后）
+
+| 调用 | 结果 |
+| --- | --- |
+| `bilibili_transcribe(BV1KDNA6eEgr, 0–20s)` | 缓存命中、瞬时返回；9 段中文、`verdict=ok`；预算 `rounds 1/6`、`audioSecondsUsed 0`（命中不扣音频） |
+| `bilibili_inspect(30s, ocr, subtitle-band)` | `source=ffmpeg`、1080P、`accuracy=frame-level`、`maxErrorMs=null`；OCR 文本与画面硬字幕一致 |
+| `bilibili_video_like_set`（不带 intent） | dry-run 预览放行、不发写请求；`intent=apply` 才触发审批 |
 
 ### 4.4 Windows 登录态全量验收（2026-11-02）
 
