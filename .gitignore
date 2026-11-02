@@ -2,6 +2,8 @@ node_modules/
 .bili-data/
 *.log
 .DS_Store
-# 本地临时目录（会话解包、npm 缓存、模型/媒体缓存）
+# 本地临时目录（会话解包、npm 缓存、媒体缓存）
 .tmp-*/
 .cache/
+# codex 子任务用的 worktree（每个任务一个分支）
+.worktree/
