@@ -7,7 +7,7 @@ import { clearPlayUrlCache, getPlayUrls } from '../../lib/bili/playurl.mjs';
 import { medianGapSeconds, normalizeTargets } from '../../lib/media/inspect.mjs';
 import { mergeDuplicateOcrEntries, normalizeOcrText, planSamples } from '../../lib/media/ocr.mjs';
 import { judgeTranscript, segmentsToEntries } from '../../lib/media/asr.mjs';
-import { coverageRatio } from '../../lib/media/timeline.mjs';
+import { coverageRatio, normalizeCues } from '../../lib/media/timeline.mjs';
 import { suggestedWindowsFromDensity } from '../../lib/media/evidence.mjs';
 import {
   locateStoryboardOrder,
@@ -190,6 +190,23 @@ test('字幕覆盖按区间并集：重叠、乱序、越界、中间挖空', ()
   assert.equal(coverageRatio([{ startMs: 0, endMs: 1000 }, { startMs: 1500, endMs: 2000 }], 2000), 0.75);
   assert.equal(coverageRatio([], 2000), 0);
   assert.equal(coverageRatio([{ startMs: 0, endMs: 100 }], 0), 0);
+});
+
+test('字幕规范化：越界/倒序/负值 cue 会被裁剪或丢弃', () => {
+  const cues = [
+    { startMs: 5000, endMs: 6000 }, // 整段在片尾之外 → 丢弃
+    { startMs: 0, endMs: 1000 },
+    { startMs: 2000, endMs: 1500 }, // 倒序 → 丢弃
+    { startMs: -100, endMs: 500 }, // 起点为负 → 裁到 0
+  ];
+  const out = normalizeCues(cues, 2000);
+  // 按结束时间排一下再比，避免依赖稳定排序的细节
+  const pairs = out.map((cue) => [cue.startMs, cue.endMs]).sort((a, b) => a[1] - b[1]);
+  assert.deepEqual(pairs, [[0, 500], [0, 1000]]);
+  // 只剩 0–1000 被覆盖
+  assert.equal(coverageRatio(out, 2000), 0.5);
+  // 全部越界时覆盖度为 0，而不是把 extent 伪造成 1
+  assert.equal(coverageRatio(normalizeCues([{ startMs: 5000, endMs: 6000 }], 2000), 2000), 0);
 });
 
 test('故事板没有时间索引时明确不可用，而不是伪造一格', () => {
