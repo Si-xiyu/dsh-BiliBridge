@@ -185,6 +185,12 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   - 实测：冷启 18.0s → 同 worker 复用 4.1s；缓存命中约 60ms。
 - 预算与缓存：`bundleId` 在 TTL（2h）内按 `(bvid,cid)` 复用，轮次 6 / 音频 900s（可配置）；
   缓存命中只占一轮、不扣音频秒数；失败只退音频、不退轮次；账本只在内存，重启丢失。
+## 5.6 设置页 P0（2026-11-02）
+
+- `lib/client.js`：`settings.section` 注册「B站工具」（id `bilibili-bridge`、order 200）。
+- `package.json`：`exports["./client"]` + `dsh.client = { inject: [], platform: "web" }`。
+- 视觉验收需要**重启 DSH** 后打开设置查看；P1 才接 `/bilibili-bridge/api/*`。
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
