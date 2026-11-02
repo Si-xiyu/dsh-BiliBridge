@@ -131,4 +131,8 @@ test('渲染：未登录与旧形状（budget 是数组）都不崩', async () =
   const exports = await loadExports();
   assert.ok(renderOf(exports, { account: { ok: true, loggedIn: false } }).includes('未登录'));
   assert.ok(renderOf(exports, { budget: [] }).includes('（没有进行中的分析）'));
+  // 旧形状必须连任务一起渲染出来，不能静默显示“没有任务”。
+  const legacy = renderOf(exports, { budget: [{ bundleId: 'b9', bvid: 'BV9', rounds: 2, roundsLimit: 6, audioSecondsUsed: 40, audioSecondsLimit: 900, expiresAt: '2026-11-02T01:00:00.000Z' }] });
+  assert.ok(legacy.includes('BV9'));
+  assert.ok(legacy.includes('2/6 轮'));
 });
