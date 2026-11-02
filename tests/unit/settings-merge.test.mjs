@@ -44,3 +44,10 @@ test('loopback 与来源检查分支（fail closed）', () => {
   ];
   for (const request of denied) assert.equal(trustedRequest(request), false, JSON.stringify(request));
 });
+test('来源比较做归一化：大小写、默认端口、IPv6 展开形式都视为同源', () => {
+  const ok = (headers, remote = '127.0.0.1') => trustedRequest({ socket: { remoteAddress: remote }, headers });
+  assert.equal(ok({ host: 'LOCALHOST:1983', origin: 'http://localhost:1983' }), true);
+  assert.equal(ok({ host: 'localhost:80', origin: 'http://localhost' }), true);
+  assert.equal(ok({ host: '[0:0:0:0:0:0:0:1]:1983', origin: 'http://[::1]:1983' }), true);
+  assert.equal(ok({ host: 'localhost:1983', origin: 'http://localhost:1984' }), false);
+});
