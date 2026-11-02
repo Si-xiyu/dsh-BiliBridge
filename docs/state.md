@@ -163,7 +163,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ## 6. 还没做的（按顺序）
 
-1. **长视频 ASR**：`small` 在本机约 0.3–0.6× 实时（90s 音频 ≈ 56s）。当前用 `limits.asrMaxSeconds`（默认 900s）截断并标 `partial`，
+1. **长视频 ASR**：`small` 在本机约 0.3–0.6× 实时（90s 音频 ≈ 56s）。当前用 `asrMaxSeconds`（工具默认 300s、上限 1800s；工具超时 900s）截断并标 `partial`，
    分块续取 / 后台任务尚未做——这是已知风险，暂不优化。
    已探明本机有 SAPI `zh-CN` 引擎（零安装，质量一般）与 `lib/media/sapi-asr.ps1` 探针；
    尚未接入证据链，也还没决定用 SAPI 还是 whisper.cpp / sherpa-onnx。
