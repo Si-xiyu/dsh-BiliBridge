@@ -191,6 +191,18 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - `package.json`：`exports["./client"]` + `dsh.client = { inject: [], platform: "web" }`。
 - 视觉验收需要**重启 DSH** 后打开设置查看；P1 才接 `/bilibili-bridge/api/*`。
 
+## 5.7 设置页 P1：只读仪表盘（2026-11-02）
+
+- 宿主：`lib/settings-api.mjs`，用 `ctx.inject(['webServer','loader'], …)` 懒注册两条 `kind: 'exact'` 路由：
+  - `GET /bilibili-bridge/api/status`：账号（含 face/凭据路径，不含内容）、运行时（ffmpeg/ASR/OCR 探测）、
+    预算（`listAnalyses()`）、缓存统计（按真实文件名归类：asr / storyboard / cover / inspect / avatar / 其它）。
+  - `GET /bilibili-bridge/api/avatar`：逐跳校验 https + `*.hdslb.com`、最多 3 跳、20s 超时、流式 4MB 上限、
+    24h 落盘缓存，不携带账号 Cookie。
+- 页面：账号 / 运行时 / 预算 / 缓存四块 + 刷新；每个分区带 `ok/code`，失败显示「读取失败（错误码）」，
+  不会把故障画成空数据。
+- 实测（宿主进程内直调 handler）：`status` 200 / 604–1121ms，无凭据泄漏；`avatar` 200、56KB，二次 59–63ms 命中缓存；非 GET 405。
+- 生效方式：路由在插件加载时注册，**需要重启 DSH**；之后改前端只刷新页面即可。
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
