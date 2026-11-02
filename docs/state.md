@@ -168,15 +168,19 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - `lib/media/asr_worker.py` + `lib/media/asr.mjs`：faster-whisper（CPU int8、默认 `small`、自动语言、
   `vad_filter`），绕开 PyAV 解码（用标准库读 16k 单声道 wav 成 numpy 数组）。
 - 实测：中文 90s 55.7s（`avg_logprob -0.20`）、英文 60s 23.5s（`-0.075`，自动识别为 `en`）。
-- 目前**只有 CLI/单测能调用**（`tests/manual-asr.mjs`），还没包成 Stage 2 工具，也没有预算与缓存。
+- 已接成 Stage 2 工具 `bilibili_transcribe`，并升级成**常驻 worker**：
+  - 懒启动、空闲 300s 退出、崩溃后下次调用重启、单请求 120s 超时、AbortSignal 取消、串行队列。
+  - Windows 坑：stdin 保持打开 + 读线程阻塞时，主线程导入 numpy/onnxruntime 这类 C 扩展会死锁；已改为起线程前预加载。
+  - 实测：冷启 18.0s → 同 worker 复用 4.1s；缓存命中约 60ms。
+- 预算与缓存：`bundleId` 在 TTL（2h）内按 `(bvid,cid)` 复用，轮次 6 / 音频 900s（可配置）；
+  缓存命中只占一轮、不扣音频秒数；失败只退音频、不退轮次；账本只在内存，重启丢失。
 ## 6. 还没做的（按顺序）
 
-1. **常驻 Python worker**：懒启动、空闲退出、崩溃重启、并发与超时控制（30s 窗口从 ~25s 降到 ~12s）。
-2. **预算与缓存**：`bundleId + TTL` 记账（轮次与音频秒数独立计算），ASR/OCR 持久化缓存，命中不扣预算。
-3. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
-4. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
-5. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
-6. **文档**：`docs/agents.md`（子任务分工与 worktree 流程）尚未写。
+1. **真实写操作**：点赞/收藏/稍后观看仍只有 dry-run。
+2. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
+3. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
+4. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
+5. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。

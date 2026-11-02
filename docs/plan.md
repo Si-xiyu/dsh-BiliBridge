@@ -70,8 +70,8 @@ Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
 - [x] **M8.3 ASR 适配层**：faster-whisper（CPU int8 / small / 自动语言）已可用，待包成 Stage 2 工具
   - [x] M8.3a 适配器接口 + Python worker（`transcribe(audio)` → 带时间戳的段落）
   - [x] M8.3b `bilibili_transcribe` 工具：窗口化（默认 30s、上限 300s）+ 时间戳回原始轴
-  - [ ] M8.3c 常驻 worker：懒启动、空闲退出、崩溃重启、并发与超时控制
-  - [ ] M8.3d 预算（bundleId + TTL）与 ASR/OCR 持久化缓存；命中不扣预算
+  - [x] M8.3c 常驻 worker：懒启动、空闲退出、崩溃重启、并发与超时控制
+  - [x] M8.3d 预算（bundleId + TTL）与 ASR 持久化缓存；命中不扣预算（OCR 缓存已备、待接入）
 
 ## v1 工具（18）
 
