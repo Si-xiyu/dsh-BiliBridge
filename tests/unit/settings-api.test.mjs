@@ -58,7 +58,7 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
   }, { account: () => { throw new Error('secret'); } });
 
   assert.deepEqual(routes.map((r) => [r.kind, r.path]), [
-    ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'],
+    ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'],
   ]);
 
   let code;
@@ -72,4 +72,31 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
 
   await routes[1].handler({ method: 'POST' }, res);
   assert.equal(code, 405);
+});
+
+async function callSettings(method, body='', headers={}, remoteAddress='127.0.0.1', current={}) {
+ const routes=[]; const writes=[];
+ registerSettingsRoutes({inject(names,cb){cb({webServer:{register(route){routes.push(route);return ()=>{};}}});}},
+ {readJson:async()=>current,writeJsonAtomic:async(...args)=>writes.push(args)});
+ const req={method,headers,socket:{remoteAddress},async *[Symbol.asyncIterator](){yield Buffer.from(body);}};
+ let code,result;
+ await routes[2].handler(req,{writeHead(value){code=value;},end(value){result=JSON.parse(value);}});
+ return {code,result,writes};
+}
+test('不可信来源、超限与非法 JSON 均不写入',async()=>{
+ for(const [body,headers,remote,code] of [['{}',{},'10.0.0.1',403],['{}',{host:'localhost',origin:'http://evil'},'127.0.0.1',403],['x'.repeat(65537),{},'127.0.0.1',413],['{}',{'content-length':'65537'},'127.0.0.1',413],['bad',{},'127.0.0.1',400]]){
+ const result=await callSettings('POST',body,headers,remote); assert.equal(result.code,code);assert.equal(result.writes.length,0);
+ }
+});
+test('校验失败不写入，成功保留未知字段并过滤响应',async()=>{
+ const current={note:'keep',cookies:{secret:'credential'},ffmpegPath:'local',budget:{roundsLimit:6}};
+ const invalid=await callSettings('POST',JSON.stringify({budget:{roundsLimit:999}}),{},undefined,current);
+ assert.equal(invalid.code,400);assert.ok(invalid.result.errors.length);assert.equal(invalid.writes.length,0);
+ const success=await callSettings('POST',JSON.stringify({budget:{roundsLimit:7}}),{},undefined,current);
+ assert.equal(success.code,200);assert.equal(success.writes[0][1].note,'keep');assert.equal(success.writes[0][1].budget.roundsLimit,7);
+ assert.equal(JSON.stringify(success.result).includes('credential'),false);
+ const get=await callSettings('GET','',{},undefined,current);
+ assert.equal(get.code,200);assert.ok(get.result.path.endsWith('config.json'));assert.equal(JSON.stringify(get.result).includes('credential'),false);
+ for(const value of [null,[],42]) assert.equal((await callSettings('GET','',{},undefined,value)).code,200);
+ assert.equal((await callSettings('PUT')).code,405);
 });
