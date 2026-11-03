@@ -242,7 +242,14 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 脱敏：对象按键递归打码；**文本里出现凭据字段赋值就整段替换为 `[redacted-text]`**（强弱键两档，避免 `csrf_token` 变体漏检、也避免把 `face: smile` 这类正文抹掉）；含 `upsig`/`deadline` 的 URL 与长不透明串同样打码。
 - 查看：设置页「最近调用」列表（2 秒轮询，可展开参数与结果）；对话内右下角浮层（`shell.overlay`，注册失败静默跳过，不影响设置页）。
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
-- 记录不阻塞工具返回：内存先记、落盘走后台队列。`docs/state.md` 之外，写入门禁的语义也一并调整：**所有非 GET 请求都进 limitedWrite**，进入 effect 前的失败统一标 `submission=not-submitted`（账本记 FAILED，不会把“没发出去”当成未决）。
+- 记录不阻塞工具返回：内存先记、落盘走后台队列。
+
+### 写入门禁（B 线合并后调整）
+
+- **所有非 GET 请求都进 `limitedWrite`**；缺账号时直接 `AUTH_REQUIRED`，不再静默放行。
+- 进入 `effect` 之前的失败（凭证不足、状态文件损坏、抢锁超时、建目录失败）统一标 `submission=not-submitted`，
+  发送账本因此记 `FAILED` 而不是 `PENDING_CONFIRM`；已进入发送的失败原样上抛。
+- 写入状态文件做结构校验：`null`/数组/字符串、时间字段非数字一律判 `WRITE_STATE_CORRUPT` 并拒绝发送。
 
 ## 6. 还没做的（按顺序）
 
