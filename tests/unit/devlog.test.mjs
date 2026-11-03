@@ -117,3 +117,21 @@ test('devlog 不误伤只是提到敏感词的正文', async () => {
     if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
   }
 });
+test('devlog 覆盖 csrf_token/access_token 变体，且不误伤 face: smile 这类正文', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev5-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled: true } }));
+    resetDevEnabledCache();
+    await recordToolCall({ tool: 'bilibili_a', args: {}, ok: true, result: { text: '日志：{"csrf_token":"short-secret"}' } });
+    await recordToolCall({ tool: 'bilibili_b', args: {}, ok: true, result: { text: '日志：{"access_token":"short-secret"}' } });
+    await recordToolCall({ tool: 'bilibili_c', args: {}, ok: true, result: { text: '说明：face: smile，deadline: tomorrow' } });
+    const [third, second, first] = snapshotDevLog();
+    assert.equal(first.resultPreview.includes('short-secret'), false);
+    assert.equal(second.resultPreview.includes('short-secret'), false);
+    assert.ok(third.resultPreview.includes('face: smile'), '普通正文不该被整段抹掉');
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+  }
+});
