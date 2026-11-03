@@ -136,3 +136,15 @@ test('渲染：未登录与旧形状（budget 是数组）都不崩', async () =
   assert.ok(legacy.includes('BV9'));
   assert.ok(legacy.includes('2/6 轮'));
 });
+test('overlay 注册可选且失败不影响设置 section', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  for (const failure of ['inject', 'register']) {
+    const registered = [];
+    exports.apply({ slots: {
+      inject(name, callback) { if (name === 'shell.overlay' && failure === 'inject') throw new Error('missing'); return callback(); },
+      register(options) { if (options.name === 'shell.overlay' && failure === 'register') throw new Error('missing'); registered.push(options); },
+    } });
+    assert.equal(registered[0].name, 'settings.section');
+  }
+});

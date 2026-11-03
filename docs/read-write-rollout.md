@@ -1,6 +1,10 @@
 # 基础读写扩展：P0 / P1
 
-日期：2026-11-03（Asia/Shanghai）。工作分支：`dev/codex`；worktree：`.worktree/codex`。本轮不包含视频投稿、投稿任务模型、独立分区工具或 Opus。尚未 merge，也未修改 desktop profile 或重启 DSH。
+日期：2026-11-03（Asia/Shanghai）。工作分支：`dev/codex`；worktree：`.worktree/codex`。本轮不包含视频投稿、投稿任务模型、独立分区工具或 Opus。初次交付 aa9abb8 时尚未 merge；随后与 auto-dev 集成，见下方记录。没有修改 desktop profile 或重启 DSH。
+
+## 与 auto-dev 集成
+
+在 dev/codex 中以 no-ff 合入 auto-dev 7e820fb，自动合并无冲突。保留双方 state.md 章节、开发者日志及可选浮层、十条设置路由、dev.enabled 配置，以及动态图片/原动态索引；lib/index.js 审批策略保持原样。合并后 npm run test:single 为 **161/161**，注册工具 **25 个且无重名**。随后将此集成结果以 no-ff 合回 auto-dev；新增工具的真实宿主验收仍需重启 DSH。
 
 ## 工具预算
 
