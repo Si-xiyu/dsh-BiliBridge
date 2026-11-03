@@ -243,12 +243,23 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 记录：`lib/devlog.mjs` 包住 `registerTool` 的 execute，记录 id / 时间 / 工具 / 脱敏参数 / 成功状态 / 错误码 / 耗时 / 结果字节与 4KB 预览；
   参数限 2KB，超限标 `truncated`；内存 200 条、`devlog.jsonl` 保留 500 行（进程内队列 + 文件锁 + 原子替换 + `restrictFile`）。
 - 脱敏：对象按键递归打码；**文本里出现凭据字段赋值就整段替换为 `[redacted-text]`**（强弱键两档，避免 `csrf_token` 变体漏检、也避免把 `face: smile` 这类正文抹掉）；含 `upsig`/`deadline` 的 URL 与长不透明串同样打码。
-- 查看：**右侧会话内 dock「B站调试」**（`sidebarRightTabs.register` 声明类型 + `sidebar.right.pane.tab` 用同一 id 注册 body）。
-  面板默认只看**本会话**，可切「全部会话」；支持搜索、只看失败、暂停轮询、复制 JSON、清空；`tab.visible` 为假时停轮询。
-  入口是右侧「开始」页的第 4 张卡片（order 40）；没有会话时右栏本身不渲染。
-  设置页保留一份精简的「最近调用」列表（全局）。
-- 记录带 `sessionId` / `callId`；`GET /dev/log` 支持 `session=` 过滤。
+- 查看：**右侧会话内 dock「B站调试」**，只显示**本会话**的调用。
+  - 类型：`sidebarRightTabs.register({ id: 'dsh-bilibili-bridge/devtools', kind: 'bilibili-devtools', title, guide })`；
+    `priority` 只认 `builtin` / `extension`（默认） / `fallback`，不要传自定义字符串。
+  - 内容：`slots.register({ name: 'sidebar.right.pane.tab', key: 同 id }, DevTab)`。
+  - 入口：右侧「开始」页卡片（order 40）；没有会话时右栏本身不渲染。
+  - 能力：搜索、只看失败、暂停轮询、复制单条 JSON、清空；`tab.visible` 为假时停轮询。
+- 记录带 `sessionId` / `callId`；面板按 `sessionId`（去掉 `session-` 前缀后）匹配，`GET /dev/log` 也支持 `session=` 过滤。
+- 设置页保留一份精简的「最近调用」列表（全局），并显示「右侧调试面板：已注册 / 等待服务」用于自检。
 - ~~左侧 main 全局页~~、~~右下角浮层~~ 都已移除：调试台定位是「本次会话调了什么」。
+
+### 客户端插件激活规则（踩过的坑）
+
+宿主判定：`apply` 抛错 → `kind: failed`（**整个 web boot 崩**）；`inject` 缺服务 → `kind: pending`（只是不激活）。
+所以客户端插件里：
+- `apply` 里任何可选槽位/服务都不能同步访问，更不能不包 try/catch；
+- 可选服务用 `ctx.inject([name], cb)` 等就绪后再用，缺了也不会拖垮启动；
+- 右侧栏服务的 `priority` 不是自由字符串。
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
 - 记录不阻塞工具返回：内存先记、落盘走后台队列。
 
