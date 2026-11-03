@@ -59,7 +59,7 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
 
   assert.deepEqual(routes.map((r) => [r.kind, r.path]), [
     ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'],
-    ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
+    ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history', 'dev/log', 'dev/clear'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
   ]);
 
   let code;
@@ -330,4 +330,27 @@ test('排队期间配置损坏也返回 409，而不是时好时坏', async () =
   const { code, result } = await call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 7 } }) });
   assert.equal(code, 409);
   assert.equal(result.error, 'CONFIG_CORRUPT');
+});
+
+ test('dev routes clamp limits, forward since and require trusted clear', async () => {
+   let options, cleared = 0;
+   const routes = operationRoutes({ isDevEnabled: () => true, snapshotDevLog: value => { options = value; return []; }, clearDevLog: () => { cleared++; } });
+   for (const [query, limit] of [['',50], ['?limit=0&since=42',1], ['?limit=999',100], ['?limit=bad',50]]) {
+     const req = fakeReq(); req.url = '/bilibili-bridge/api/dev/log' + query;
+     await routes.get('dev/log')(req, { writeHead: code => assert.equal(code,200), end: body => assert.deepEqual(JSON.parse(body), { ok:true, enabled:true, items:[] }) });
+     assert.equal(options.limit, limit); assert.equal(options.since, query.includes('since') ? 42 : 0);
+   }
+   assert.equal((await call(routes.get('dev/clear'), { method:'POST', headers:{} })).code,403);
+   assert.equal(cleared,0);
+   assert.deepEqual(await call(routes.get('dev/clear'), { method:'POST' }), { code:200, result:{ ok:true } });
+   assert.equal(cleared,1);
+ });
+
+test('dev settings accept booleans and reject other values', async () => {
+  const { handler, writes } = harness({});
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ dev: { enabled: 'true' } }) })).code, 400);
+  assert.equal(writes.length, 0);
+  const result = await call(handler, { method: 'POST', body: JSON.stringify({ dev: { enabled: true } }) });
+  assert.equal(result.code, 200);
+  assert.equal(result.result.config.dev.enabled, true);
 });

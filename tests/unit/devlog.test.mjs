@@ -1,0 +1,61 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { recordToolCall, snapshotDevLog, clearDevLog } from '../../lib/devlog.mjs';
+import { registerTool } from '../../lib/tools/helpers.mjs';
+
+test('devlog redacts, bounds, filters, persists and preserves tool execution', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev-'));
+  process.env.BILI_DATA_DIR = dir;
+  const config = enabled => writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled } }));
+  try {
+    await clearDevLog();
+    await config(false);
+    await recordToolCall({ tool: 'bilibili_test', args: { cookie: 'secret' }, ok: true });
+    assert.equal(snapshotDevLog().length, 0);
+    await config(true);
+    await recordToolCall({ tool: 'bilibili_test', args: { cookie: 'secret', nested: { token: 'credential' }, url: 'https://a/b?upsig=signature' }, ok: true, durationMs: 1, result: { text: JSON.stringify({ sessdata: 'hidden', url: 'https://a/b?deadline=123' }) } });
+    let [item] = snapshotDevLog();
+    assert.equal(item.args.cookie, '[redacted]');
+    assert.equal(item.args.url, '[redacted-url]');
+    const disk = await readFile(join(dir, 'devlog.jsonl'), 'utf8');
+    for (const secret of ['secret', 'credential', 'signature', 'hidden', 'deadline=123']) assert.equal(disk.includes(secret), false);
+    const since = item.id;
+    await recordToolCall({ tool: 'bilibili_test', args: { text: '中'.repeat(3000) }, result: '中'.repeat(5000), ok: true });
+    [item] = snapshotDevLog({ since });
+    assert.equal(item.truncated, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(item.args)) <= 2048);
+    assert.ok(Buffer.byteLength(item.resultPreview) <= 4096);
+    assert.equal(snapshotDevLog({ since: item.id }).length, 0);
+    let def;
+    const ctx = { tools: { register(value) { def = value; } } };
+    const result = { data: 1 };
+    registerTool(ctx, { name: 'bilibili_success', execute: async () => result });
+    assert.deepEqual(await def.execute({ bvid: 'BV1' }), result);
+    assert.equal(snapshotDevLog()[0].ok, true);
+    const error = Object.assign(new Error('original'), { code: 'TEST' });
+    registerTool(ctx, { name: 'bilibili_failure', execute: async () => { throw error; } });
+    await assert.rejects(def.execute({}), value => value === error);
+    assert.equal(snapshotDevLog()[0].errorCode, 'TEST');
+    registerTool(ctx, { name: 'internal', execute: async () => result });
+    const last = snapshotDevLog()[0].id;
+    await def.execute({}); assert.equal(snapshotDevLog()[0].id, last);
+    for (let i = 0; i < 505; i++) await recordToolCall({ tool: 'bilibili_test', args: {}, result: {}, ok: true });
+    assert.equal(snapshotDevLog({ limit: 100 }).length, 100);
+    assert.equal(snapshotDevLog({ limit: 200 }).length, 200);
+    assert.equal(snapshotDevLog({ limit: 200 }).at(-1).id, last + 306);
+    const newest = snapshotDevLog({ limit: 100 });
+    assert.equal(newest.at(-1).id, last + 406);
+    assert.equal(snapshotDevLog({ since: 0, limit: 100 })[0].id, last + 505);
+    assert.equal(snapshotDevLog({ since: last + 305, limit: 100 }).at(-1).id, last + 406);
+    assert.equal(snapshotDevLog({ since: last, limit: 100 })[0].id, last + 505);
+    assert.equal((await readFile(join(dir, 'devlog.jsonl'), 'utf8')).trim().split('\n').length, 500);
+    await clearDevLog(); assert.deepEqual(snapshotDevLog(), []);
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
