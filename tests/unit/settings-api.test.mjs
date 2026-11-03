@@ -103,51 +103,89 @@ test('P3 POST routes share trust validation, body validation and sanitized error
   assert.deepEqual(failure, { code: 500, result: { ok: false, error: 'INTERNAL_ERROR' } });
 });
 
-test('cache clear filters scopes, preserves avatars and skips recent files', async () => {
+test('cache clear：只删已知布局、跳过近期文件、保留头像、拒绝符号链接根', async () => {
   const now = 200000;
+  const hash = 'a'.repeat(64);
   const files = [
-    { path: 'asr/old.json', bytes: 10, mtimeMs: 0 },
-    { path: 'asr/new.json', bytes: 20, mtimeMs: now - 1000 },
-    { path: 'BV1234567890/inspect.jpg', bytes: 30, mtimeMs: 0 },
-    { path: 'BV1234567890/active.jpg', bytes: 40, mtimeMs: now - 60000 },
+    { path: `asr/${hash}.json`, bytes: 10, mtimeMs: 0 },
+    { path: `asr/${'b'.repeat(64)}.json`, bytes: 20, mtimeMs: now - 1000 },
+    { path: 'BV1KDNA6eEgr/cover.img', bytes: 30, mtimeMs: 0 },
+    { path: 'BV1KDNA6eEgr/inspect-1-2.jpg', bytes: 40, mtimeMs: now - 60000 },
+    { path: 'BV1KDNA6eEgr/secret.bin', bytes: 55, mtimeMs: 0 },
     { path: 'avatar-1.img', bytes: 50, mtimeMs: 0 },
-    { path: 'other/file', bytes: 60, mtimeMs: 0 },
+    { path: 'other/file.json', bytes: 60, mtimeMs: 0 },
   ];
   const deleted = [];
-  const routes = operationRoutes({ listCacheFiles: async () => files, cacheNow: () => now, unlink: async path => deleted.push(path) });
-  for (const [scope, freedBytes, removedFiles, skipped] of [['asr', 10, 1, 1], ['media', 30, 1, 1], ['all', 100, 3, 2]]) {
+  const base = {
+    listCacheFiles: async () => files,
+    cacheNow: () => now,
+    lstat: async () => ({ isSymbolicLink: () => false }),
+    // 删除前的复核读到与扫描时一致的元数据
+    stat: async (path) => {
+      const normalized = String(path).replaceAll('\\', '/');
+      const file = files.find((item) => normalized.endsWith(item.path));
+      return { mtimeMs: file?.mtimeMs ?? 0, size: file?.bytes ?? 0 };
+    },
+    unlink: async (path) => deleted.push(path),
+  };
+  const routes = operationRoutes(base);
+
+  const cases = [
+    ['asr', 10, 1, 1],
+    ['media', 30, 1, 1],
+    // all 只清已知布局：asr 的 json + BV 目录图片；不认识的文件（other/secret.bin）一律不碰
+    ['all', 40, 2, 2],
+  ];
+  for (const [scope, freedBytes, removedFiles, skipped] of cases) {
     deleted.length = 0;
     const response = await call(routes.get('cache/clear'), { method: 'POST', body: JSON.stringify({ scope }) });
-    assert.deepEqual(response.result, { ok: true, freedBytes, removedFiles, skipped });
+    assert.deepEqual(response.result, { ok: true, freedBytes, removedFiles, skipped }, scope);
     assert.equal(deleted.length, removedFiles);
-    assert.equal(deleted.some(path => path.includes('avatar-')), false);
+    assert.equal(deleted.some((path) => path.includes('avatar-')), false);
   }
-  const empty = operationRoutes({ listCacheFiles: async () => [] });
+
+  // 缓存根是符号链接时直接拒绝，避免删除范围被指到数据目录之外
+  const unsafe = operationRoutes({ ...base, lstat: async () => ({ isSymbolicLink: () => true }) });
+  assert.equal((await call(unsafe.get('cache/clear'), { method: 'POST', body: '{"scope":"all"}' })).code, 500);
+
+  const empty = operationRoutes({ listCacheFiles: async () => [], lstat: async () => ({ isSymbolicLink: () => false }) });
   assert.deepEqual((await call(empty.get('cache/clear'), { method: 'POST', body: '{"scope":"all"}' })).result,
     { ok: true, freedBytes: 0, removedFiles: 0, skipped: 0 });
 });
 
-test('account routes use QR data URL and save confirmed login without leaking credentials', async () => {
+test('account 路由：二维码用 data URL，确认后落盘且不泄露凭据，logout 使旧会话失效', async () => {
   const jar = {};
-  let saved = 0, loggedOut = 0, status = 'waiting';
+  let saved = 0, loggedOut = 0, status = 'waiting', polledKey;
   const routes = operationRoutes({ auth: {
     logout: async () => { loggedOut++; },
-    qrStart: async () => ({ url: 'qr-url', key: 'key' }),
+    qrStart: async () => ({ url: 'qr-url', key: 'bili-key' }),
     currentJar: async () => ({ jar }),
-    qrPoll: async (id, actualJar) => { assert.equal(id, 'key'); assert.equal(actualJar, jar); return { status, data: { secret: true } }; },
+    qrPoll: async (key, actualJar) => { polledKey = key; assert.equal(actualJar, jar); return { status, data: { secret: true } }; },
     saveLoginFromPoll: async (data, actualJar) => { assert.equal(data.secret, true); assert.equal(actualJar, jar); saved++; return { accountId: '1', uname: 'name', cookies: 'secret' }; },
   }, toDataURL: async url => { assert.equal(url, 'qr-url'); return 'data:image/png;base64,test'; } });
-  assert.deepEqual((await call(routes.get('account/qr/start'), { method: 'POST' })).result,
-    { ok: true, id: 'key', image: 'data:image/png;base64,test' });
+
+  const start = await call(routes.get('account/qr/start'), { method: 'POST' });
+  assert.equal(start.result.ok, true);
+  assert.equal(start.result.image, 'data:image/png;base64,test');
+  assert.match(start.result.id, /^[0-9a-f-]{36}$/);
+  // 对外只给会话 id，B站的 qrcode_key 不进响应
+  assert.equal(JSON.stringify(start.result).includes('bili-key'), false);
+
   for (status of ['waiting', 'scanned', 'expired', 'confirmed']) {
-    const response = await call(routes.get('account/qr/poll'), { method: 'POST', body: '{"id":"key"}' });
+    const response = await call(routes.get('account/qr/poll'), { method: 'POST', body: JSON.stringify({ id: start.result.id }) });
     assert.deepEqual(response.result, { ok: true, status, ...(status === 'confirmed' ? { account: { mid: '1', uname: 'name' } } : {}) });
   }
+  assert.equal(polledKey, 'bili-key');
   assert.equal(saved, 1);
+  assert.equal(JSON.stringify((await call(routes.get('account/qr/poll'), { method: 'POST', body: JSON.stringify({ id: start.result.id }) })).result).includes('secret'), false);
+
   assert.deepEqual((await call(routes.get('account/logout'), { method: 'POST' })).result, { ok: true, loggedIn: false });
   assert.equal(loggedOut, 1);
+  // 退出后旧二维码会话必须失效，不能靠在途 poll 把凭据写回来
+  const stale = await call(routes.get('account/qr/poll'), { method: 'POST', body: JSON.stringify({ id: start.result.id }) });
+  assert.equal(stale.code, 409);
+  assert.equal(stale.result.error, 'QR_SESSION_INVALID');
 });
-
 test('history route clamps limit to 1–50', async () => {
   let limit;
   const handler = operationRoutes({ readHistory: async options => { limit = options.limit; return []; } }).get('history');
