@@ -148,3 +148,19 @@ test('overlay 注册可选且失败不影响设置 section', async () => {
     assert.equal(registered[0].name, 'settings.section');
   }
 });
+test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
+  const exports = await loadExports();
+  const cases = [
+    ['Section', undefined],
+    ['SettingsForm', undefined],
+    ['History', { version: 1 }],
+    ['renderDashboard', { data: null, error: '', loading: false, refresh: () => {} }],
+  ];
+  for (const [name, args] of cases) {
+    assert.equal(typeof exports[name], 'function', `${name} 必须导出`);
+    assert.ok(exports[name](args), `${name} 渲染不能返回空`);
+  }
+  // 开发者模式关闭时浮层按设计返回 null：只要求它不抛错。
+  assert.equal(typeof exports.DevOverlay, 'function');
+  assert.doesNotThrow(() => exports.DevOverlay({}));
+});
