@@ -59,6 +59,7 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
 
   assert.deepEqual(routes.map((r) => [r.kind, r.path]), [
     ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'],
+    ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
   ]);
 
   let code;
@@ -75,6 +76,87 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
 });
 
 const TRUST = { host: '127.0.0.1:1983', origin: 'http://127.0.0.1:1983' };
+
+function operationRoutes(readers = {}) {
+  const routes = new Map();
+  registerSettingsRoutes({ inject(_names, callback) {
+    callback({ webServer: { register(route) { routes.set(route.path.split('/api/')[1], route.handler); return () => {}; } } });
+  } }, readers);
+  return routes;
+}
+
+test('P3 POST routes share trust validation, body validation and sanitized errors', async () => {
+  const routes = operationRoutes({ auth: { logout() { throw new Error('secret upstream'); } } });
+  for (const name of ['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll']) {
+    const handler = routes.get(name);
+    assert.equal((await call(handler, { method: 'GET' })).code, 405);
+    for (const options of [{ headers: {} }, { remote: '10.0.0.1' }, { headers: { ...TRUST, origin: 'http://evil' } }]) {
+      assert.equal((await call(handler, { method: 'POST', body: '{}', ...options })).code, 403);
+    }
+    for (const body of ['bad', 'null', '[]', 'x'.repeat(65537)]) {
+      assert.equal((await call(handler, { method: 'POST', body })).code, 400);
+    }
+  }
+  assert.equal((await call(routes.get('cache/clear'), { method: 'POST', body: '{"scope":"other"}' })).code, 400);
+  assert.equal((await call(routes.get('account/qr/poll'), { method: 'POST', body: '{}' })).code, 400);
+  const failure = await call(routes.get('account/logout'), { method: 'POST' });
+  assert.deepEqual(failure, { code: 500, result: { ok: false, error: 'INTERNAL_ERROR' } });
+});
+
+test('cache clear filters scopes, preserves avatars and skips recent files', async () => {
+  const now = 200000;
+  const files = [
+    { path: 'asr/old.json', bytes: 10, mtimeMs: 0 },
+    { path: 'asr/new.json', bytes: 20, mtimeMs: now - 1000 },
+    { path: 'BV1234567890/inspect.jpg', bytes: 30, mtimeMs: 0 },
+    { path: 'BV1234567890/active.jpg', bytes: 40, mtimeMs: now - 60000 },
+    { path: 'avatar-1.img', bytes: 50, mtimeMs: 0 },
+    { path: 'other/file', bytes: 60, mtimeMs: 0 },
+  ];
+  const deleted = [];
+  const routes = operationRoutes({ listCacheFiles: async () => files, cacheNow: () => now, unlink: async path => deleted.push(path) });
+  for (const [scope, freedBytes, removedFiles, skipped] of [['asr', 10, 1, 1], ['media', 30, 1, 1], ['all', 100, 3, 2]]) {
+    deleted.length = 0;
+    const response = await call(routes.get('cache/clear'), { method: 'POST', body: JSON.stringify({ scope }) });
+    assert.deepEqual(response.result, { ok: true, freedBytes, removedFiles, skipped });
+    assert.equal(deleted.length, removedFiles);
+    assert.equal(deleted.some(path => path.includes('avatar-')), false);
+  }
+  const empty = operationRoutes({ listCacheFiles: async () => [] });
+  assert.deepEqual((await call(empty.get('cache/clear'), { method: 'POST', body: '{"scope":"all"}' })).result,
+    { ok: true, freedBytes: 0, removedFiles: 0, skipped: 0 });
+});
+
+test('account routes use QR data URL and save confirmed login without leaking credentials', async () => {
+  const jar = {};
+  let saved = 0, loggedOut = 0, status = 'waiting';
+  const routes = operationRoutes({ auth: {
+    logout: async () => { loggedOut++; },
+    qrStart: async () => ({ url: 'qr-url', key: 'key' }),
+    currentJar: async () => ({ jar }),
+    qrPoll: async (id, actualJar) => { assert.equal(id, 'key'); assert.equal(actualJar, jar); return { status, data: { secret: true } }; },
+    saveLoginFromPoll: async (data, actualJar) => { assert.equal(data.secret, true); assert.equal(actualJar, jar); saved++; return { accountId: '1', uname: 'name', cookies: 'secret' }; },
+  }, toDataURL: async url => { assert.equal(url, 'qr-url'); return 'data:image/png;base64,test'; } });
+  assert.deepEqual((await call(routes.get('account/qr/start'), { method: 'POST' })).result,
+    { ok: true, id: 'key', image: 'data:image/png;base64,test' });
+  for (status of ['waiting', 'scanned', 'expired', 'confirmed']) {
+    const response = await call(routes.get('account/qr/poll'), { method: 'POST', body: '{"id":"key"}' });
+    assert.deepEqual(response.result, { ok: true, status, ...(status === 'confirmed' ? { account: { mid: '1', uname: 'name' } } : {}) });
+  }
+  assert.equal(saved, 1);
+  assert.deepEqual((await call(routes.get('account/logout'), { method: 'POST' })).result, { ok: true, loggedIn: false });
+  assert.equal(loggedOut, 1);
+});
+
+test('history route clamps limit to 1–50', async () => {
+  let limit;
+  const handler = operationRoutes({ readHistory: async options => { limit = options.limit; return []; } }).get('history');
+  for (const [query, expected] of [['', 20], ['?limit=0', 1], ['?limit=999', 50], ['?limit=bad', 20]]) {
+    const req = fakeReq(); req.url = '/bilibili-bridge/api/history' + query;
+    await handler(req, { writeHead(code) { assert.equal(code, 200); }, end(body) { assert.deepEqual(JSON.parse(body), { ok: true, items: [] }); } });
+    assert.equal(limit, expected);
+  }
+});
 
 function harness(current, { corrupt = false, missing = false } = {}) {
   const state = { value: current, reads: 0, corruptAfterFirst: Boolean(arguments[1]?.corruptAfterFirst) };
