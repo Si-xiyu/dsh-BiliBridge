@@ -41,10 +41,10 @@ test('offset 加回原始时间轴且不修改 worker 数据或时长', () => {
   }
 });
 
-test('插件注册 19 个唯一工具，转写工具只注册一次', () => {
+test('插件注册 25 个唯一工具，转写工具只注册一次', () => {
   const tools = [];
   apply({ on() {}, tools: { register(tool) { tools.push(tool); } } });
-  assert.equal(tools.length, 19);
-  assert.equal(new Set(tools.map((tool) => tool.name)).size, 19);
+  assert.equal(tools.length, 25);
+  assert.equal(new Set(tools.map((tool) => tool.name)).size, 25);
   assert.equal(tools.filter((tool) => tool.name === 'bilibili_transcribe').length, 1);
 });

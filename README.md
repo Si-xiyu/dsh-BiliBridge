@@ -1,15 +1,16 @@
 # dsh-BiliBridge
 
-DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视频证据提取，暴露给主 Agent（DeepSeek）。
+DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据提取，暴露给主 Agent（DeepSeek）。
 
 ## 当前状态
 
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 19 个：**已装进本机 Windows 的 desktop profile，宿主内 19 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
+- 工具层 **25 个**：原有 19 个入口保持兼容，新增热点、通知、评论发送、私信发送、动态发布和批量采集；已与 auto-dev 的开发者模式及动态字段增强集成，合并后测试 161/161 通过，新增工具仍待重启 DSH 后做宿主验收。
 - 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）与 **窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。
-- 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
+- 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。评论、私信、动态已实现预览、审批、持久化判重和结果核对，真实发送尚未验收。
+- P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
 ## 外部依赖：ffmpeg（可选，但决定画面质量）
 
@@ -43,12 +44,19 @@ Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node 
 | `bilibili_video_like_set` | 点赞 |
 | `bilibili_extract` | Stage 1 证据包（文本 + 2 张图） |
 | `bilibili_inspect` | Stage 2 定向补帧 |
+| `bilibili_transcribe` | Stage 2 按窗口 ASR |
 | `bilibili_search` | 视频 / 用户搜索（WBI） |
 | `bilibili_comments` | 热门 / 最新评论与最多 3 条楼中楼 |
 | `bilibili_user_profile` | 用户主页、粉丝 / 关注数、可取得时的投稿数 |
 | `bilibili_dynamics` | 用户动态 / 当前账号关注动态 |
+| `bilibili_discover` | 热门 / 热搜 / 每周必看 / 排行榜 |
+| `bilibili_notifications` | 未读 / 回复 / @ / 点赞 / 私信会话摘要 |
+| `bilibili_comment_send` | 发表评论或回复 |
+| `bilibili_message_send` | 文字私信 |
+| `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时动态 |
+| `bilibili_collect` | 有上限的搜索后批量评论、字幕采集 |
 
-三个写工具在代码层走 `tools/pre-execute` 的 `ask`，无人值守时由 DSH fail closed。
+六个写工具仅 `intent=apply` 在代码层走 `tools/pre-execute` 的 `ask`。发送类先 preview 获取绑定正文、目标和素材的 previewToken；结果不明返回 PENDING_CONFIRM，用同一工具的 check 核对，禁止盲目重发。所有账号写请求共用最小间隔、失败退避与风控暂停。
 
 ## 安装（开发版）
 
@@ -69,7 +77,7 @@ cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridg
 
 macOS/Linux：把上面的 `mklink /J` 换成 `ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`。
 
-重启 DSH 后，新会话里应能看到 18 个 `bilibili_*` 工具。**插件没有 HMR，改 `lib/` 必须重启宿主。**
+合并本轮分支并重启 DSH 后，新会话应能看到 25 个 `bilibili_*` 工具；新增工具的宿主验收仍待此步骤。**插件没有 HMR，改 `lib/` 必须重启宿主。**
 
 ## 开发 CLI
 
@@ -103,7 +111,7 @@ macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 ## 已知限制
 
 - 字幕必须走 WBI 签名的 `/x/player/wbi/v2`；不带签名的 `/x/player/v2` 会返回别的视频的 AI 字幕，不能使用。
-- 当前字幕代码没有旧的标题匹配、最小质量过滤或短重试；长字幕默认只返回前 800 条，尚无续取入口。
+- 长字幕每页最多 800 条；将 `subtitles.nextCursor` 传回 `extract.subtitleCursor` 续取。轨道变化需从头读取；完整轨道覆盖率与本页范围分开返回。
 - 评论常规分页使用 `/x/v2/reply`。每次最多补取前 5 个预览不足的楼中楼，其余保留已有预览。只有 -400 或明确要求 WBI 时才降级；WBI 降级仅支持第一页，不把风控错误当作降级理由。
 - 动态 pageSize 是单次上限（1–50）；nextOffset 有下一页时始终为绑定 scope 的 `dsh:` 游标，裸 offset 会返回 INVALID_ARGUMENT，旧的裸游标需重新从第一页获取。较小分页保留同一上游批次的尾部。不是快照，源列表变化时可能重复或漂移，调用方宜按 dynamicId 去重。纯图片动态没有文本时返回空 text，不做 OCR。
 - 故事板九宫格是“概览”，不是精确抽帧；`bilibili_inspect` 会返回 `req/got` 与 `accuracy`。
