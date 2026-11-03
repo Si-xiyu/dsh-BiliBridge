@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { sendOnce, checkSend } from '../../lib/bili/send-ledger.mjs';
 import { limitedWrite } from '../../lib/bili/write-rate.mjs';
 import { CookieJar } from '../../lib/bili/http.mjs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 test('durable reservation blocks concurrent sends and survives new invocations', async () => {
   const root = await mkdtemp(join(tmpdir(), 'bili-ledger-'));
@@ -16,6 +18,10 @@ test('durable reservation blocks concurrent sends and survives new invocations',
     assert.equal(calls, 1);
     assert.deepEqual(results.map(r => r.status).sort(), ['DUPLICATE', 'SENT']);
     assert.equal((await sendOnce(args)).status, 'DUPLICATE');
+    const moduleUrl = new URL('../../lib/bili/send-ledger.mjs', import.meta.url).href;
+    const script = `import {sendOnce} from ${JSON.stringify(moduleUrl)}; console.log(JSON.stringify(await sendOnce({root:${JSON.stringify(root)},account:'123',kind:'comment',target:{aid:'1'},text:'正文',submit:async()=>{throw Error('must not submit')}})));`;
+    const child = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], { windowsHide: true });
+    assert.equal(JSON.parse(child.stdout).status, 'DUPLICATE');
     assert.equal((await sendOnce({ ...args, account: '124' })).status, 'SENT');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
