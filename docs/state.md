@@ -220,6 +220,9 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
   只提交改动字段、显示逐条错误、保存成功提示「下一次调用生效」。
 - 实测（临时数据目录直调 handler）：非法值 400 且文件不变；跨站 403；合法保存 200 且 `ffmpegPath`/`note` 保留；响应不含未知字段。
 - 生效方式：路由需要**重启 DSH**；之后改设置即时生效（analysisConfig 每次调用重读）。
+- 交互：**改完自动保存**（停 500ms 提交该字段），不需要点保存；另有「恢复默认」按钮（只重置已知设置段）。
+- 来源校验放宽为「远端回环 + Host 主机名回环 + Origin 主机名回环」，允许 `localhost` ↔ `127.0.0.1` 与端口差异；
+  403 会返回 `reason`（remote-not-loopback / host-not-loopback / origin-not-loopback …）。
 
 ## 5.9 设置页 P3：缓存清理、账号操作与最近调用（2026-11-03）
 
