@@ -216,3 +216,28 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   assert.doesNotThrow(() => exports.apply(hostile));
   assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
+test('右侧服务稍后才就绪：apply 先成功返回，随后自动补注册', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const tabs = [];
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+  };
+  Object.defineProperty(ctx, 'sidebarRightTabs', {
+    configurable: true,
+    get() { throw new Error('service not ready'); },
+  });
+  assert.doesNotThrow(() => exports.apply(ctx));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+
+  // 服务就绪后，退避重试应当补上类型与 body 注册
+  Object.defineProperty(ctx, 'sidebarRightTabs', {
+    configurable: true,
+    value: { register(definition) { tabs.push(definition); } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  assert.equal(tabs.length, 1);
+  assert.equal(tabs[0].id, 'dsh-bilibili-bridge/devtools');
+  assert.ok(registered.some((item) => item.name === 'sidebar.right.pane.tab'));
+});
