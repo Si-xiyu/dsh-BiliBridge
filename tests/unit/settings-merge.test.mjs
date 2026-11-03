@@ -31,7 +31,9 @@ test('loopback 与来源检查分支（宽松但仍是 fail closed）', () => {
   // 同机：localhost 与 127.0.0.1 互通、端口差异不影响
   assert.equal(ok({ host: 'localhost:12', origin: 'http://localhost:12' }), true);
   assert.equal(ok({ host: '127.0.0.1:12', origin: 'http://localhost:12' }), true);
-  assert.equal(ok({ host: 'localhost:12', origin: 'http://localhost:99' }), true);
+  // 同机不同端口必须拒绝：否则另一个端口上的页面可以跨站表单写配置
+  assert.equal(ok({ host: 'localhost:12', origin: 'http://localhost:99' }), false);
+  assert.equal(ok({ host: '127.0.0.1:12', origin: 'http://127.0.0.1:12' }), true);
   // 同源 fetch 可能不带 Origin：没有跨站标记时放行
   assert.equal(ok({ host: 'localhost:12' }), true);
   // 以下必须拒绝
