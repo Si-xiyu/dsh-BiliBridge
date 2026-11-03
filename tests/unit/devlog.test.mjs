@@ -81,3 +81,24 @@ test('devlog 脱敏正文里夹带的 JSON 片段与单引号键值', async () =
     if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
   }
 });
+test('devlog 脱敏转义引号与整段转义的 JSON', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev3-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled: true } }));
+    resetDevEnabledCache();
+    await recordToolCall({
+      tool: 'bilibili_text',
+      args: {},
+      ok: true,
+      // 第一种：值里带转义引号；第二种：整段 JSON 被转义
+      result: { text: '日志：{"cookie":"a=\\"short-secret\\""} 以及 {\\"bili_jct\\":\\"other-secret\\"}' },
+    });
+    const [item] = snapshotDevLog();
+    assert.equal(item.resultPreview.includes('short-secret'), false);
+    assert.equal(item.resultPreview.includes('other-secret'), false);
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+  }
+});

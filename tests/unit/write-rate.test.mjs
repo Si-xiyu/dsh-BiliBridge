@@ -48,3 +48,17 @@ test('未登录直接拒绝，不进入发送', async () => {
   );
   assert.equal(ran, false);
 });
+test('状态文件损坏：拒绝发送，且标成未提交', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rate-'));
+  await writeFile(join(root, 'write-rate-215407733.json'), '{ broken', { mode: 0o600 });
+  let ran = false;
+  await assert.rejects(
+    limitedWrite(jar(), async () => { ran = true; }, { root }),
+    (error) => {
+      assert.equal(error.code, 'WRITE_STATE_CORRUPT');
+      assert.equal(error.submission, 'not-submitted');
+      return true;
+    },
+  );
+  assert.equal(ran, false, '状态损坏时绝不能真的发请求');
+});
