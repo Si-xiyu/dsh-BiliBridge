@@ -1,5 +1,26 @@
 # 能力矩阵与只读验收
 
+## 当前补充：2026-11-03 基础读写 P0/P1
+
+当前代码为 25 个工具，保持四个 auth 入口和单一 extract 平台文本入口。详见 [交付记录与验证边界](read-write-rollout.md)。未切换正在运行的宿主路径；以下新增能力的真实验证均为 worktree 内独立 Node 进程。
+
+| 能力 | 实际 endpoint / 实现 | 本轮验证 |
+| --- | --- | --- |
+| discover | /x/web-interface/popular、search/square、popular/series/list 与 one、ranking/v2 | 热门、热搜、周刊列表/指定期、全站榜单真实成功；其他榜单分区未逐项实测 |
+| notifications | /x/msgfeed/unread、reply、at、like；api.vc 的 single_unread / get_sessions | 五种 scope 真实成功；会话不展开正文、不标已读 |
+| user/search/favorites | 既有接口增加过滤；/x/space/upstat 补统计 | 投稿 stow、资料统计及收藏夹列表真实通过；其他参数有模拟覆盖，未全部逐项实测 |
+| extract | /x/player/wbi/v2 + 原字幕 URL；/x/v1/dm/list.so | 800+776 字幕续取、覆盖率一致、续取不附图；弹幕窗口真实成功 |
+| collect | 搜索 + 评论 + 字幕，复用既有客户端 | 单视频真实成功；取消与 512 KB 预算为模拟验证 |
+| comment_send | /x/v2/reply/add；check 回读 reply 或 reply/reply | implemented；预览绑定、审批、判重和超时核对模拟通过，未真实发送 |
+| message_send | api.vc /web_im/v1/web_im/send_msg；check fetch_session_msgs | implemented；预览与字节限制模拟通过，未真实发送 |
+| dynamic_publish | draw/upload_bfs → feed/create/dyn；定时使用 api.vc add_draft | implemented；multipart、JSON、图片变化和定时草稿模拟通过，未真实上传/发布 |
+| favorite_set / watch_later_set | 既有写接口 + guardedWrite 回读 | 已授权目标分别 false→true→false，四次 verified，最终恢复 |
+| 统一写保护 | 私有 JSONL、账号限流 JSON、previewToken | 并发与子进程判重、未决保护、跨工具暂停模拟通过 |
+
+## 以下为历史验收记录（2026-11-01 至 02）
+
+历史的“尚未实现/尚无续取/未写入”等状态仅描述当时，不覆盖上方最新状态。
+
 本轮验收日期：2026-11-01（Asia/Shanghai），Node v25.8.0。没有新增依赖，没有执行账号写操作，没有重启 DSH。新增四个工具通过注册函数和现有认证层在独立 Node 进程中调用；DSH 重启后的可见性、主模型调用仍待评审方验收。
 
 状态含义：`implemented` 为代码具备但未真实验收；`verified` 为有指定环境中的真实调用证据；`limited` 为可用但有明确功能限制；`unsupported` 为未实现。历史验收来自 docs/handoff.md，不能当作本轮重新验证。
