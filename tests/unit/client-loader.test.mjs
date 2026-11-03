@@ -201,3 +201,18 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
   assert.equal(typeof exports.DevTab, 'function');
   assert.ok(exports.DevTab({}));
 });
+test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const hostile = {
+    slots: {
+      inject(name, callback) { return callback(); },
+      register(options) { registered.push(options); },
+    },
+  };
+  // 模拟 cordis 未注入服务时的 getter 抛错（真实崩溃就是这么发生的）
+  Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
+  assert.doesNotThrow(() => exports.apply(hostile));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
