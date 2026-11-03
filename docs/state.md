@@ -230,6 +230,16 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 实测：asr 清 10B / media 清 30B / 不认识的 `notes.txt` 保留 / 跨站 403 / 非法 scope 400 / history 返回 2 条 / qr 返回 data URL。
 - 生效方式：路由需要**重启 DSH**。
 
+## 5.10 开发者模式（2026-11-03）
+
+- 开关：`config.json` 的 `dev.enabled`（默认关），设置页「开发者」分组里可改，改完下一次调用生效（开关有 2 秒缓存）。
+- 记录：`lib/devlog.mjs` 包住 `registerTool` 的 execute，记录 id / 时间 / 工具 / 脱敏参数 / 成功状态 / 错误码 / 耗时 / 结果字节与 4KB 预览；
+  参数限 2KB，超限标 `truncated`；内存 200 条、`devlog.jsonl` 保留 500 行（进程内队列 + 文件锁 + 原子替换 + `restrictFile`）。
+- 脱敏：敏感键、`k=v` 文本、URL 编码形式、长不透明串（JWT/base64）、含 `upsig`/`deadline` 的 URL 全部打码；宁多勿少。
+- 查看：设置页「最近调用」列表（2 秒轮询，可展开参数与结果）；对话内右下角浮层（`shell.overlay`，注册失败静默跳过，不影响设置页）。
+- 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
+- 记录不阻塞工具返回：内存先记、落盘走后台队列。
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作验收**：dry-run 默认 + `intent=apply` 已实现，点赞往返已实测；收藏/稍后观看的 apply 尚未实测。
