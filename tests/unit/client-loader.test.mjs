@@ -136,17 +136,34 @@ test('渲染：未登录与旧形状（budget 是数组）都不崩', async () =
   assert.ok(legacy.includes('BV9'));
   assert.ok(legacy.includes('2/6 轮'));
 });
-test('overlay 注册可选且失败不影响设置 section', async () => {
+test('侧边栏整页：main 与 sidebar.panellist 成对注册且 id 一致', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
-  for (const failure of ['inject', 'register']) {
-    const registered = [];
-    exports.apply({ slots: {
-      inject(name, callback) { if (name === 'shell.overlay' && failure === 'inject') throw new Error('missing'); return callback(); },
-      register(options) { if (options.name === 'shell.overlay' && failure === 'register') throw new Error('missing'); registered.push(options); },
-    } });
-    assert.equal(registered[0].name, 'settings.section');
-  }
+  const registered = [];
+  exports.apply({ slots: {
+    inject(name, callback) { return callback(); },
+    register(options) { registered.push(options); },
+  } });
+  const names = registered.map((item) => item.name);
+  assert.deepEqual(names, ['settings.section', 'main', 'sidebar.panellist']);
+
+  const main = registered.find((item) => item.name === 'main');
+  const nav = registered.find((item) => item.name === 'sidebar.panellist');
+  // 宿主按 id/key 关联两处注册；不一致时点侧边栏会 selectPanel 报错。
+  assert.equal(main.key, nav.id);
+  assert.equal(nav.label(), 'B站调试');
+  assert.equal(nav.order, 100);
+});
+
+test('侧边栏槽位不可用时不抛错，设置页仍注册', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  exports.apply({ slots: {
+    inject(name, callback) { if (name !== 'settings.section') throw new Error('slot missing'); return callback(); },
+    register(options) { registered.push(options); },
+  } });
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
   const exports = await loadExports();
@@ -154,13 +171,16 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
     ['Section', undefined],
     ['SettingsForm', undefined],
     ['History', { version: 1 }],
+    ['DevPage', undefined],
     ['renderDashboard', { data: null, error: '', loading: false, refresh: () => {} }],
   ];
   for (const [name, args] of cases) {
     assert.equal(typeof exports[name], 'function', `${name} 必须导出`);
     assert.ok(exports[name](args), `${name} 渲染不能返回空`);
   }
-  // 开发者模式关闭时浮层按设计返回 null：只要求它不抛错。
-  assert.equal(typeof exports.DevOverlay, 'function');
-  assert.doesNotThrow(() => exports.DevOverlay({}));
+  // 侧边栏图标与整页都要能渲染（整页在关闭态也有内容）。
+  assert.equal(typeof exports.DevIcon, 'function');
+  assert.ok(exports.DevIcon({ size: 16 }));
+  assert.equal(typeof exports.DevPage, 'function');
+  assert.ok(exports.DevPage({}));
 });
