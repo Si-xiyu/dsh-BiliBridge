@@ -239,10 +239,10 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 开关：`config.json` 的 `dev.enabled`（默认关），设置页「开发者」分组里可改，改完下一次调用生效（开关有 2 秒缓存）。
 - 记录：`lib/devlog.mjs` 包住 `registerTool` 的 execute，记录 id / 时间 / 工具 / 脱敏参数 / 成功状态 / 错误码 / 耗时 / 结果字节与 4KB 预览；
   参数限 2KB，超限标 `truncated`；内存 200 条、`devlog.jsonl` 保留 500 行（进程内队列 + 文件锁 + 原子替换 + `restrictFile`）。
-- 脱敏：敏感键、`k=v` 文本、URL 编码形式、长不透明串（JWT/base64）、含 `upsig`/`deadline` 的 URL 全部打码；宁多勿少。
+- 脱敏：对象按键递归打码；**文本里出现凭据字段赋值就整段替换为 `[redacted-text]`**（强弱键两档，避免 `csrf_token` 变体漏检、也避免把 `face: smile` 这类正文抹掉）；含 `upsig`/`deadline` 的 URL 与长不透明串同样打码。
 - 查看：设置页「最近调用」列表（2 秒轮询，可展开参数与结果）；对话内右下角浮层（`shell.overlay`，注册失败静默跳过，不影响设置页）。
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
-- 记录不阻塞工具返回：内存先记、落盘走后台队列。
+- 记录不阻塞工具返回：内存先记、落盘走后台队列。`docs/state.md` 之外，写入门禁的语义也一并调整：**所有非 GET 请求都进 limitedWrite**，进入 effect 前的失败统一标 `submission=not-submitted`（账本记 FAILED，不会把“没发出去”当成未决）。
 
 ## 6. 还没做的（按顺序）
 
