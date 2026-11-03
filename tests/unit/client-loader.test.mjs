@@ -46,7 +46,7 @@ test('client bundle 用稳定的 id 与手写 factory 注册', async () => {
   assert.equal(typeof exports.Section, 'function');
 });
 
-test('apply 把 section 注册到 settings.section，标签名是「B站工具」', async () => {
+test('apply 把 section 注册到 settings.section，标签名是「BiliBridge」', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
 
@@ -70,13 +70,13 @@ test('apply 把 section 注册到 settings.section，标签名是「B站工具�
   assert.equal(options.name, 'settings.section');
   assert.equal(options.id, 'bilibili-bridge');
   assert.equal(options.order, 200);
-  assert.equal(options.label(), 'B站工具');
+  assert.equal(options.label(), 'BiliBridge');
   assert.equal(component, exports.Section);
 });
 test('客户端源码保留中文文案（防止再次被写成问号占位）', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8');
-  for (const word of ['B站工具', '账号', '运行时', '预算', '缓存', '刷新']) {
+  for (const word of ['BiliBridge', '账号', '运行时', '预算', '缓存', '刷新']) {
     assert.ok(source.includes(word), `client.js 缺少中文文案：${word}`);
   }
   assert.ok(!/[?？]{3,}/.test(source), 'client.js 不应该出现连续问号占位');
@@ -153,7 +153,7 @@ test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡
   const definition = tabs[0];
   assert.match(definition.id, /^dsh-bilibili-bridge\//);
   assert.equal(definition.kind, 'bilibili-devtools');
-  assert.equal(definition.title(), 'B站调试');
+  assert.equal(definition.title(), 'BiliBridge');
   assert.equal(definition.guide.length, 1);
   assert.equal(definition.guide[0].order, 40);
 
