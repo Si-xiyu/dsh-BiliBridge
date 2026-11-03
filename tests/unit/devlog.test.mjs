@@ -1,9 +1,9 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { recordToolCall, snapshotDevLog, clearDevLog } from '../../lib/devlog.mjs';
+import { recordToolCall, snapshotDevLog, clearDevLog, resetDevEnabledCache } from '../../lib/devlog.mjs';
 import { registerTool } from '../../lib/tools/helpers.mjs';
 
 test('devlog redacts, bounds, filters, persists and preserves tool execution', async () => {
@@ -13,10 +13,10 @@ test('devlog redacts, bounds, filters, persists and preserves tool execution', a
   const config = enabled => writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled } }));
   try {
     await clearDevLog();
-    await config(false);
+    await config(false); resetDevEnabledCache();
     await recordToolCall({ tool: 'bilibili_test', args: { cookie: 'secret' }, ok: true });
     assert.equal(snapshotDevLog().length, 0);
-    await config(true);
+    await config(true); resetDevEnabledCache();
     await recordToolCall({ tool: 'bilibili_test', args: { cookie: 'secret', nested: { token: 'credential' }, url: 'https://a/b?upsig=signature' }, ok: true, durationMs: 1, result: { text: JSON.stringify({ sessdata: 'hidden', url: 'https://a/b?deadline=123' }) } });
     let [item] = snapshotDevLog();
     assert.equal(item.args.cookie, '[redacted]');
