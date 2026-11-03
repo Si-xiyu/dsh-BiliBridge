@@ -59,3 +59,25 @@ test('devlog redacts, bounds, filters, persists and preserves tool execution', a
     await rm(dir, { recursive: true, force: true });
   }
 });
+test('devlog 脱敏正文里夹带的 JSON 片段与单引号键值', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev2-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled: true } }));
+    resetDevEnabledCache();
+    await recordToolCall({
+      tool: 'bilibili_text',
+      args: {},
+      ok: true,
+      result: { text: `日志：{"bili_jct":"0123456789abcdef0123456789abcdef"} 以及 'SESSDATA': 'abc123'` },
+    });
+    const [item] = snapshotDevLog();
+    assert.equal(item.resultPreview.includes('0123456789abcdef'), false);
+    assert.equal(item.resultPreview.includes('abc123'), false);
+    const disk = await readFile(join(dir, 'devlog.jsonl'), 'utf8');
+    assert.equal(disk.includes('0123456789abcdef'), false);
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+  }
+});
