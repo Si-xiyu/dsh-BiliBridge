@@ -102,3 +102,18 @@ test('devlog 脱敏转义引号与整段转义的 JSON', async () => {
     if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
   }
 });
+test('devlog 不误伤只是提到敏感词的正文', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev4-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled: true } }));
+    resetDevEnabledCache();
+    const text = '这条视频讲了 cookie 设置说明与 token 过期处理，共 3 点。';
+    await recordToolCall({ tool: 'bilibili_text', args: {}, ok: true, result: { text } });
+    const [item] = snapshotDevLog();
+    assert.ok(item.resultPreview.includes('cookie 设置说明'), '没有字段赋值的正文要保留');
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+  }
+});
