@@ -217,6 +217,19 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 实测（临时数据目录直调 handler）：非法值 400 且文件不变；跨站 403；合法保存 200 且 `ffmpegPath`/`note` 保留；响应不含未知字段。
 - 生效方式：路由需要**重启 DSH**；之后改设置即时生效（analysisConfig 每次调用重读）。
 
+## 5.9 设置页 P3：缓存清理、账号操作与最近调用（2026-11-03）
+
+- 新路由：`POST /cache/clear`（scope `asr|media|all`）、`POST /account/logout`、`POST /account/qr/start`、
+  `POST /account/qr/poll`、`GET /history?limit=`。
+- 清理只删**已知布局**（asr 的 64 位 hex json、BV 目录下的 cover/storyboard/sprite/inspect），
+  跳过 60 秒内修改过的文件，删除前重新 stat 复核；缓存根是符号链接时直接拒绝；头像缓存永远保留。
+- 扫码：对外只暴露随机会话 id（B站 qrcode_key 留在服务端），每次 start / logout 都清空旧会话，
+  在途 confirmed 不会在退出后把凭据写回。
+- 最近调用：`history.jsonl`（保留 200 行，进程内队列 + 跨进程文件锁 + 原子替换），
+  `transcribe` 与 `inspect` 各记成功/失败、耗时、缓存命中与关键参数。
+- 实测：asr 清 10B / media 清 30B / 不认识的 `notes.txt` 保留 / 跨站 403 / 非法 scope 400 / history 返回 2 条 / qr 返回 data URL。
+- 生效方式：路由需要**重启 DSH**。
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作验收**：dry-run 默认 + `intent=apply` 已实现，点赞往返已实测；收藏/稍后观看的 apply 尚未实测。
