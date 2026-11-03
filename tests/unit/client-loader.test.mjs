@@ -141,10 +141,13 @@ test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡
   const exports = descriptor.factory(() => fakeReact());
   const tabs = [];
   const registered = [];
-  exports.apply({
-    sidebarRightTabs: { register(definition) { tabs.push(definition); } },
+  const ctx = {
     slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
-  });
+    // 模拟宿主：服务就绪后才回调
+    inject(names, callback) { assert.deepEqual(names, ['sidebarRightTabs']); callback(ctx); },
+  };
+  ctx.sidebarRightTabs = { register(definition) { tabs.push(definition); } };
+  exports.apply(ctx);
 
   assert.equal(tabs.length, 1);
   const definition = tabs[0];
@@ -159,27 +162,42 @@ test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡
   assert.equal(body.key, definition.id);
 });
 
-test('右侧栏服务缺失时不抛错，设置页仍然注册', async () => {
+test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
   const registered = [];
-  exports.apply({ slots: {
-    inject(name, callback) { if (name === 'sidebar.right.pane.tab') throw new Error('slot missing'); return callback(); },
-    register(options) { registered.push(options); },
-  } });
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    // 服务永远不会就绪
+    inject() {},
+  };
+  assert.doesNotThrow(() => exports.apply(ctx));
   assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 
-test('右侧栏服务缺失时整插件仍可加载（inject 只强制 slots）', async () => {
+test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
-  assert.deepEqual(exports.inject, ['slots']);
-  // 没有 sidebarRightTabs 时不抛错，设置页照旧注册
   const registered = [];
-  assert.doesNotThrow(() => exports.apply({ slots: {
-    inject(name, callback) { return callback(); },
-    register(options) { registered.push(options); },
-  } }));
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    inject(names, callback) { callback(ctx); },
+  };
+  Object.defineProperty(ctx, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
+  assert.doesNotThrow(() => exports.apply(ctx));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
+
+test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pending）', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    inject() { /* 宿主还没就绪，回调不调用 */ },
+  };
+  const returned = exports.apply(ctx);
+  assert.equal(returned, undefined);
   assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
@@ -215,29 +233,4 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(hostile));
   assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
-});
-test('右侧服务稍后才就绪：apply 先成功返回，随后自动补注册', async () => {
-  const descriptor = await loadClient();
-  const exports = descriptor.factory(() => fakeReact());
-  const tabs = [];
-  const registered = [];
-  const ctx = {
-    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
-  };
-  Object.defineProperty(ctx, 'sidebarRightTabs', {
-    configurable: true,
-    get() { throw new Error('service not ready'); },
-  });
-  assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
-
-  // 服务就绪后，退避重试应当补上类型与 body 注册
-  Object.defineProperty(ctx, 'sidebarRightTabs', {
-    configurable: true,
-    value: { register(definition) { tabs.push(definition); } },
-  });
-  await new Promise((resolve) => setTimeout(resolve, 450));
-  assert.equal(tabs.length, 1);
-  assert.equal(tabs[0].id, 'dsh-bilibili-bridge/devtools');
-  assert.ok(registered.some((item) => item.name === 'sidebar.right.pane.tab'));
 });
