@@ -136,33 +136,50 @@ test('渲染：未登录与旧形状（budget 是数组）都不崩', async () =
   assert.ok(legacy.includes('BV9'));
   assert.ok(legacy.includes('2/6 轮'));
 });
-test('侧边栏整页：main 与 sidebar.panellist 成对注册且 id 一致', async () => {
+test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡片', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
+  const tabs = [];
   const registered = [];
-  exports.apply({ slots: {
-    inject(name, callback) { return callback(); },
-    register(options) { registered.push(options); },
-  } });
-  const names = registered.map((item) => item.name);
-  assert.deepEqual(names, ['settings.section', 'main', 'sidebar.panellist']);
+  exports.apply({
+    sidebarRightTabs: { register(definition) { tabs.push(definition); } },
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+  });
 
-  const main = registered.find((item) => item.name === 'main');
-  const nav = registered.find((item) => item.name === 'sidebar.panellist');
-  // 宿主按 id/key 关联两处注册；不一致时点侧边栏会 selectPanel 报错。
-  assert.equal(main.key, nav.id);
-  assert.equal(nav.label(), 'B站调试');
-  assert.equal(nav.order, 100);
+  assert.equal(tabs.length, 1);
+  const definition = tabs[0];
+  assert.match(definition.id, /^dsh-bilibili-bridge\//);
+  assert.equal(definition.kind, 'bilibili-devtools');
+  assert.equal(definition.title(), 'B站调试');
+  assert.equal(definition.guide.length, 1);
+  assert.equal(definition.guide[0].order, 40);
+
+  // body 必须用同一个 id 作为 key，否则宿主找不到这个 tab 的内容
+  const body = registered.find((item) => item.name === 'sidebar.right.pane.tab');
+  assert.equal(body.key, definition.id);
 });
 
-test('侧边栏槽位不可用时不抛错，设置页仍注册', async () => {
+test('右侧栏服务缺失时不抛错，设置页仍然注册', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
   const registered = [];
   exports.apply({ slots: {
-    inject(name, callback) { if (name !== 'settings.section') throw new Error('slot missing'); return callback(); },
+    inject(name, callback) { if (name === 'sidebar.right.pane.tab') throw new Error('slot missing'); return callback(); },
     register(options) { registered.push(options); },
   } });
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
+
+test('右侧栏服务缺失时整插件仍可加载（inject 只强制 slots）', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  assert.deepEqual(exports.inject, ['slots']);
+  // 没有 sidebarRightTabs 时不抛错，设置页照旧注册
+  const registered = [];
+  assert.doesNotThrow(() => exports.apply({ slots: {
+    inject(name, callback) { return callback(); },
+    register(options) { registered.push(options); },
+  } }));
   assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
@@ -171,7 +188,7 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
     ['Section', undefined],
     ['SettingsForm', undefined],
     ['History', { version: 1 }],
-    ['DevPage', undefined],
+    ['DevTab', {}],
     ['renderDashboard', { data: null, error: '', loading: false, refresh: () => {} }],
   ];
   for (const [name, args] of cases) {
@@ -181,6 +198,6 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
   // 侧边栏图标与整页都要能渲染（整页在关闭态也有内容）。
   assert.equal(typeof exports.DevIcon, 'function');
   assert.ok(exports.DevIcon({ size: 16 }));
-  assert.equal(typeof exports.DevPage, 'function');
-  assert.ok(exports.DevPage({}));
+  assert.equal(typeof exports.DevTab, 'function');
+  assert.ok(exports.DevTab({}));
 });
