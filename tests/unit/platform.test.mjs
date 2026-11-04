@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { asrCandidates, isPathLike } from '../../lib/media/asr.mjs';
+import { asrCandidates, asrEnv, isPathLike } from '../../lib/media/asr.mjs';
 import { ocrEngineFor } from '../../lib/media/ocr.mjs';
 import { visionBinaryPath } from '../../lib/media/vision-ocr.mjs';
 
@@ -52,6 +52,23 @@ test('裸命令名不算路径，必须交给 PATH 解析', () => {
   assert.equal(isPathLike('/usr/bin/python3'), true);
   assert.equal(isPathLike('D:/tools/asr/.venv/Scripts/python.exe'), true);
   assert.equal(isPathLike('C:\\Python312\\python.exe'), true);
+});
+
+test('HF 镜像只在配置了才覆盖，其余环境变量原样继承', () => {
+  const before = process.env.HF_ENDPOINT;
+  try {
+    process.env.HF_ENDPOINT = 'https://huggingface.co';
+    const plain = asrEnv({ hfEndpoint: null });
+    assert.equal(plain.HF_ENDPOINT, 'https://huggingface.co', '没配镜像时不该抹掉已有值');
+    assert.equal(plain.PATH, process.env.PATH, '其它环境变量必须继承，否则 python 找不到库');
+
+    const mirrored = asrEnv({ hfEndpoint: 'https://hf-mirror.com' });
+    assert.equal(mirrored.HF_ENDPOINT, 'https://hf-mirror.com');
+    assert.equal(asrEnv(undefined).HF_ENDPOINT, 'https://huggingface.co', '空运行时也不该崩');
+  } finally {
+    if (before === undefined) delete process.env.HF_ENDPOINT;
+    else process.env.HF_ENDPOINT = before;
+  }
 });
 
 test('Vision 助手落在数据目录内，不污染仓库', () => {
