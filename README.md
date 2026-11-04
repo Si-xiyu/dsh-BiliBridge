@@ -7,28 +7,38 @@ DSH 插件：把 B 站账号的只读能力、低风险写操作和两阶段视�
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 19 个：**已装进本机 Windows 的 desktop profile，宿主内 19 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
+- 工具层 19 个：**已装进 desktop profile，宿主内 19 个工具全部可见**；搜索/评论/用户主页/动态有独立进程真实验收。
 - 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）与 **窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。
+- 平台：Windows 与 macOS 走同一套代码，差异只在外部依赖（ffmpeg / OCR 引擎 / ASR 运行时）。
+  macOS 上 OCR 用系统自带的 Apple Vision，零安装；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](docs/macos-setup.md)。
 - 写操作：代码与审批门禁已实现，仅做过 dry-run，未在真实账号上执行。
 
 ## 外部依赖：ffmpeg（可选，但决定画面质量）
 
 `bilibili_inspect` 优先用 ffmpeg 从播放流精确抽帧；没有它，画面自动降级为 B站故事板（约 6–8 秒一格，读小字不行）。
 
-```powershell
-# 1) 放二进制（示例：gyan essentials 静态包）
-#    D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe
+```bash
+# macOS
+brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA 自动用 /etc/ssl/cert.pem
+```
 
-# 2) 让插件找到它（二选一）
+```powershell
+# Windows：放二进制（示例：gyan essentials 静态包）
+#    D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe
+#
+# 让插件找到它（二选一）
 #    a. 写配置文件 %USERPROFILE%\.dsh\bilibili\config.json
 #       { "ffmpegPath": "D:/tools/ffmpeg/.../bin/ffmpeg.exe", "ffmpegCaFile": "C:/Users/<你>/.dsh/bilibili/cacert.pem" }
 #    b. 设环境变量 FFMPEG_PATH / FFMPEG_CA_FILE
-
-# 3) Windows 必须给 CA：该构建用 gnutls，不读系统证书库
+#
+# Windows 必须给 CA：该构建用 gnutls，不读系统证书库
 #    把 Mozilla 根证书存成 %USERPROFILE%\.dsh\bilibili\cacert.pem
 ```
 
-Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node tests/manual-frames.mjs BV1GJ411x7h7 auto`。
+查找顺序：`FFMPEG_PATH` → `config.json#ffmpegPath` → 平台常见位置（macOS 是 `/opt/homebrew/bin`、`/usr/local/bin`）
+→ `PATH`。macOS 的 GUI 进程 PATH 不含 Homebrew 目录，所以才需要那一步内置候选。
+
+验证：`node tests/manual-frames.mjs BV1GJ411x7h7 auto 10000 60000`。
 
 ## 工具
 

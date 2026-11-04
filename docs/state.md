@@ -3,8 +3,9 @@
 > 这是**唯一**的当前状态文档。接手的人/agent 只读这一份就能知道项目在哪、什么能用、什么没做。
 > 一次性产物（旧 handoff、任务提示词）在 `docs/archive/` 里，仅作历史参考。
 
-更新时间：2026-11-02（Asia/Shanghai）
-阶段：**M8 媒体层**——真抽帧已完成（M8.1）；OCR（M8.2）、ASR（M8.3）未开始。
+更新时间：2026-11-04（Asia/Shanghai）
+阶段：**M8 媒体层 + 跨平台**——真抽帧（M8.1）、OCR（M8.2）、ASR（M8.3）均已落地；
+macOS 适配在 `auto-dev/MacOS` 分支完成（OCR 换 Apple Vision，ASR/ffmpeg 改为按平台解析）。
 
 ---
 
@@ -39,6 +40,24 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 
 **为什么 Windows 上必须给 CA**：gyan 的构建是 gnutls，且不读 Windows 证书库，直连 B站 CDN 会报
 `Peer certificate failed verification`。给 `-ca_file` 后正常；Node 侧不受影响（undici 自带信任链）。
+
+### 2.1 本机（macOS，`auto-dev/MacOS` 分支）
+
+| 项 | 值 |
+| --- | --- |
+| 主机 | macOS 26.6.2（25G83），arm64 |
+| Node | v25.8.0 |
+| 仓库 | `/Users/kairos/Code/agent/dsh-BiliBridge` |
+| 数据目录 | `~/.dsh/bilibili` |
+| ffmpeg | **9.0.2（Homebrew）**，`/opt/homebrew/bin/ffmpeg`；命中内置候选，无需写 `ffmpegPath` |
+| CA | **不需要手工放**：自动用 `/etc/ssl/cert.pem`（Homebrew 的 ffmpeg 是 `--enable-openssl`，同样不带根证书） |
+| OCR | **Apple Vision**，首次使用时 `swiftc` 编译到 `~/.dsh/bilibili/bin/bili-ocr-vision`（零运行时依赖） |
+| ASR 运行时 | **faster-whisper 1.2.1**（Python 3.12.16 venv：`~/.dsh/bilibili/asr-venv`，模型 `~/.dsh/bilibili/models`，默认 `small`） |
+| HF 镜像 | **必须**：本机 `huggingface.co` 15s 超时不可达；`config.json#hfEndpoint="https://hf-mirror.com"` |
+| 依赖获取 | Homebrew 走 `HOMEBREW_BOTTLE_DOMAIN` 清华镜像，pip 走 TUNA 镜像（仅安装期，不进代码） |
+
+安装与验证步骤见 [macos-setup.md](macos-setup.md)。**注意 GUI 进程的 PATH 不含 `/opt/homebrew/bin`**，
+所以 `resolveToolchain` 把 `/opt/homebrew/bin/ffmpeg`、`/usr/local/bin/ffmpeg` 也列为候选。
 
 ## 3. 现在能做什么
 
@@ -93,7 +112,9 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 4.3 单测
 
-`npm test` → **97/97**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
+`npm test` → **143/143**（跳过 1 条 Windows 专用 ACL 断言：POSIX 上由 `chmod 0600` 负责）。
+除媒体/存储/写入/设置外，`tests/unit/platform.test.mjs` 覆盖平台分派：OCR 引擎选择、
+ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单、HF 镜像注入。
 
 ### 4.5 Stage 2 宿主内验收（2026-11-02 重启后）
 
@@ -240,6 +261,29 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
 - 记录不阻塞工具返回：内存先记、落盘走后台队列。
 
+## 5.11 macOS 适配（2026-11-04，分支 `auto-dev/MacOS`）
+
+目标：让 Windows 上验证过的能力在 macOS 上**等价可用**，而不是另起一套实现。
+
+| 改动 | 位置 | 原因 |
+| --- | --- | --- |
+| OCR 引擎分派 | `lib/media/ocr.mjs#ocrEngineFor` | 原来硬编码 `process.platform !== 'win32'` 直接 `UNSUPPORTED` |
+| Apple Vision 助手 | `lib/media/vision-ocr.swift` + `vision-ocr.mjs` | Vision 只能从 Swift 调用；首次 `swiftc -O` 编译到数据目录，按源码 sha256 复用，单图约 160ms |
+| OCR 可用性探测 | `ocrAvailability()` | 设置页与工具可**提前**判断，不必拼完长图才失败 |
+| ASR 解释器解析 | `lib/media/asr.mjs#asrCandidates` | 原来写死 `D:/tools/asr/.venv/Scripts/python.exe`，且 `existsSync` 会否掉裸命令名 |
+| HF 镜像配置 | `config.json#hfEndpoint` → `asrEnv` | 本机 `huggingface.co` 不可达；GUI 进程加不了环境变量 |
+| ffmpeg 系统 CA | `lib/media/ffmpeg.mjs#SYSTEM_CA_CANDIDATES` | Homebrew 的 ffmpeg 是 openssl 构建，同样不带根证书 |
+| ffmpeg 内置候选 | `KNOWN_BINARIES` | GUI 进程 PATH 不含 `/opt/homebrew/bin`，终端里能找到、宿主里找不到 |
+| ffmpeg 缺失提示 | `resolveToolchain` | 按平台给安装建议 |
+| 设置页文案 | `lib/client.js` | 显示实际引擎与不可用原因 |
+
+本机实测（2026-11-04）：
+
+- 抽帧：`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`、1080P，CA 取自 `/etc/ssl/cert.pem`
+- OCR：真实 1080P 视频 6 个采样点识别到 4 条中英字幕，文本与画面一致
+- ASR：faster-whisper 1.2.1 + `small`，模型经 `hf-mirror.com` 拉取
+- 单测：143/143（跳过 1 条 Windows 专属 ACL 用例）
+
 ## 6. 还没做的（按顺序）
 
 1. **真实写操作验收**：dry-run 默认 + `intent=apply` 已实现，点赞往返已实测；收藏/稍后观看的 apply 尚未实测。
@@ -299,6 +343,7 @@ node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 | 文件 | 性质 |
 | --- | --- |
 | `docs/state.md` | **当前状态（本文件）** |
+| `docs/macos-setup.md` | macOS 上的 ffmpeg / OCR / ASR 安装与验证 |
 | `docs/capability-matrix.md` | 每个工具的真实 endpoint、验证等级、边界 |
 | `docs/plan.md` | 里程碑与门禁 |
 | `docs/compatibility.md` | 宿主版本、插件加载方式、平台限制 |
