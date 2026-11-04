@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { asrCandidates, asrEnv, isPathLike } from '../../lib/media/asr.mjs';
 import { ocrEngineFor } from '../../lib/media/ocr.mjs';
+import { SYSTEM_CA_CANDIDATES } from '../../lib/media/ffmpeg.mjs';
 import { visionBinaryPath } from '../../lib/media/vision-ocr.mjs';
 
 // 平台分派以前写死在 Windows 上，这几条用例锁住“换平台不改调用方”的约定。
@@ -52,6 +53,13 @@ test('裸命令名不算路径，必须交给 PATH 解析', () => {
   assert.equal(isPathLike('/usr/bin/python3'), true);
   assert.equal(isPathLike('D:/tools/asr/.venv/Scripts/python.exe'), true);
   assert.equal(isPathLike('C:\\Python312\\python.exe'), true);
+});
+
+test('系统 CA 兜底清单覆盖 macOS 与常见 Linux 发行版', () => {
+  assert.ok(SYSTEM_CA_CANDIDATES.includes('/etc/ssl/cert.pem'), 'macOS 的 /etc/ssl/cert.pem 必须在列');
+  assert.ok(SYSTEM_CA_CANDIDATES.includes('/etc/ssl/certs/ca-certificates.crt'), 'Debian 系必须在列');
+  assert.ok(SYSTEM_CA_CANDIDATES.includes('/etc/pki/tls/certs/ca-bundle.crt'), 'RHEL 系必须在列');
+  assert.equal(new Set(SYSTEM_CA_CANDIDATES).size, SYSTEM_CA_CANDIDATES.length, '不要重复项');
 });
 
 test('HF 镜像只在配置了才覆盖，其余环境变量原样继承', () => {
