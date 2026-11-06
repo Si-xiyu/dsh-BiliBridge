@@ -280,8 +280,13 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 本机实测（2026-11-04）：
 
 - 抽帧：`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`、1080P，CA 取自 `/etc/ssl/cert.pem`
-- OCR：真实 1080P 视频 6 个采样点识别到 4 条中英字幕，文本与画面一致
-- ASR：faster-whisper 1.2.1 + `small`，模型经 `hf-mirror.com` 拉取
+- OCR：真实 1080P 视频 6 个采样点识别到 4 条中英字幕，文本与画面一致；单图约 160ms（编译后）
+- ASR：faster-whisper 1.2.1 + `small`，模型经 `hf-mirror.com` 拉取（先卡在 hub 的 Xet 传输上，
+  改用 curl 断点续传写入 HF 缓存布局后可用）
+  - 20s 窗口：新进程 11–14s（含取流、抽音频、模型加载）
+  - 40s 窗口：新进程约 109s；同进程冷启 118s、复用 94s
+  - **比 Windows 机器慢**（那头 90s 音频 55.7s，约 1.6× 实时；这里 40s 音频 94s，约 0.4× 实时）。
+    当时机器负载较高（DeepSeek 桌面端等在跑），且 `beam_size=5`、`cpu_threads` 未调优 —— 列为待办，不作性能结论
 - 单测：143/143（跳过 1 条 Windows 专属 ACL 用例）
 
 ## 6. 还没做的（按顺序）
@@ -291,6 +296,11 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 3. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
 4. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
 5. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
+6. **macOS 上的 ASR 性能**：本机实测约 0.4× 实时，明显慢于 Windows 机器。待查：`cpu_threads`
+   是否吃满性能核、`beam_size` 是否能降到 3、是否被其它进程抢占；确认前不调默认值。
+7. **宿主内验收**：macOS 这一轮的抽帧/OCR/ASR 都是独立进程验证，**尚未重启 DSH 在宿主内复验**
+   （插件无 HMR，重启后才会加载新代码与 `/bilibili-bridge/api/*` 路由）。
+
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。

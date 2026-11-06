@@ -156,14 +156,40 @@ brew install python@3.12
 模型落在 `~/.dsh/bilibili/models`（`HF_HOME` 也指到这里），不散落到 `~/.cache`。
 默认 `small`（约 484MB），可用 `asrModel` 改成 `base` / `tiny` / `medium`。
 
+**如果 hub 下载卡死**（本机遇到过两次：`.incomplete` 停在 0 字节，或长到 290MB 后连接被对端断开）：
+
+```bash
+# 关掉 Xet 传输，并只用一个 worker
+HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 \
+  ~/.dsh/bilibili/asr-venv/bin/python -c "
+from huggingface_hub import snapshot_download
+print(snapshot_download('Systran/faster-whisper-small',
+                        cache_dir='/Users/<你>/.dsh/bilibili/models'))
+"
+```
+
+仍然不行就直接用 curl 断点续传写进 HF 缓存布局（`git` 之外的位置，不污染仓库）：
+把 `model.bin` 下到 `models/models--Systran--faster-whisper-small/blobs/<sha256>`，
+再在 `snapshots/<rev>/model.bin` 建一个指回 `../../blobs/<sha256>` 的软链。
+加 `--speed-limit 51200 --speed-time 20` 可以让卡住的连接自己断开重试。
+
 ### 3.4 验证
 
 ```bash
-BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-asr.mjs BV1KDNA6eEgr 0 20
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-asr.mjs BV1KDNA6eEgr 20
 ```
 
-第一次调用会加载模型（冷启动十几秒），同一进程内后续窗口复用常驻 worker（数秒），
-相同 `(bvid, cid, 窗口)` 再跑会命中缓存（约 60ms）。
+本机（macOS 26 / arm64 / `small` / 机器同时跑着别的程序）实测：
+
+| 场景 | 耗时 |
+| --- | --- |
+| 20s 窗口，新进程（含取流、抽音频、模型加载） | 11–14s |
+| 40s 窗口，新进程 | ~109s |
+| 40s 窗口，同进程冷启 / 复用 | 118s / 94s |
+
+也就是说这台机器大约 **0.4× 实时**，比 Windows 机器（90s 音频 55.7s，约 1.6× 实时）慢不少。
+原因是负载与参数都还没调优（`beam_size=5`、`cpu_threads` 默认），**不要把这些数字当成
+模型的性能上界**。要提速可以先把 `beam_size` 降到 3，或确认 `cpu_threads` 是否吃满性能核。
 
 ---
 
