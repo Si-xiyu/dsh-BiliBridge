@@ -1,0 +1,9 @@
+# 统一换行，避免 Windows 编辑器把整份文件改成 CRLF 后产生“全文件冲突”。
+# 历史上 lib/client.js 就是这样把一次三方合并变成整文件冲突的。
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.woff binary
+*.woff2 binary

@@ -46,7 +46,7 @@ test('client bundle 用稳定的 id 与手写 factory 注册', async () => {
   assert.equal(typeof exports.Section, 'function');
 });
 
-test('apply 把 section 注册到 settings.section，标签名是「B站工具」', async () => {
+test('apply 把 section 注册到 settings.section，标签名是「BiliBridge」', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
 
@@ -70,13 +70,13 @@ test('apply 把 section 注册到 settings.section，标签名是「B站工具�
   assert.equal(options.name, 'settings.section');
   assert.equal(options.id, 'bilibili-bridge');
   assert.equal(options.order, 200);
-  assert.equal(options.label(), 'B站工具');
+  assert.equal(options.label(), 'BiliBridge');
   assert.equal(component, exports.Section);
 });
 test('客户端源码保留中文文案（防止再次被写成问号占位）', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8');
-  for (const word of ['B站工具', '账号', '运行时', '预算', '缓存', '刷新']) {
+  for (const word of ['BiliBridge', '账号', '运行时', '预算', '缓存', '刷新']) {
     assert.ok(source.includes(word), `client.js 缺少中文文案：${word}`);
   }
   assert.ok(!/[?？]{3,}/.test(source), 'client.js 不应该出现连续问号占位');
@@ -136,15 +136,101 @@ test('渲染：未登录与旧形状（budget 是数组）都不崩', async () =
   assert.ok(legacy.includes('BV9'));
   assert.ok(legacy.includes('2/6 轮'));
 });
-test('overlay 注册可选且失败不影响设置 section', async () => {
+test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡片', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
-  for (const failure of ['inject', 'register']) {
-    const registered = [];
-    exports.apply({ slots: {
-      inject(name, callback) { if (name === 'shell.overlay' && failure === 'inject') throw new Error('missing'); return callback(); },
-      register(options) { if (options.name === 'shell.overlay' && failure === 'register') throw new Error('missing'); registered.push(options); },
-    } });
-    assert.equal(registered[0].name, 'settings.section');
+  const tabs = [];
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    // 模拟宿主：服务就绪后才回调
+    inject(names, callback) { assert.deepEqual(names, ['sidebarRightTabs']); callback(ctx); },
+  };
+  ctx.sidebarRightTabs = { register(definition) { tabs.push(definition); } };
+  exports.apply(ctx);
+
+  assert.equal(tabs.length, 1);
+  const definition = tabs[0];
+  assert.match(definition.id, /^dsh-bilibili-bridge\//);
+  assert.equal(definition.kind, 'bilibili-devtools');
+  assert.equal(definition.title(), 'BiliBridge');
+  assert.equal(definition.guide.length, 1);
+  assert.equal(definition.guide[0].order, 40);
+
+  // body 必须用同一个 id 作为 key，否则宿主找不到这个 tab 的内容
+  const body = registered.find((item) => item.name === 'sidebar.right.pane.tab');
+  assert.equal(body.key, definition.id);
+});
+
+test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    // 服务永远不会就绪
+    inject() {},
+  };
+  assert.doesNotThrow(() => exports.apply(ctx));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
+
+test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    inject(names, callback) { callback(ctx); },
+  };
+  Object.defineProperty(ctx, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
+  assert.doesNotThrow(() => exports.apply(ctx));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
+
+test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pending）', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const ctx = {
+    slots: { inject(name, callback) { return callback(); }, register(options) { registered.push(options); } },
+    inject() { /* 宿主还没就绪，回调不调用 */ },
+  };
+  const returned = exports.apply(ctx);
+  assert.equal(returned, undefined);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+});
+test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
+  const exports = await loadExports();
+  const cases = [
+    ['Section', undefined],
+    ['SettingsForm', undefined],
+    ['History', { version: 1 }],
+    ['DevTab', {}],
+    ['renderDashboard', { data: null, error: '', loading: false, refresh: () => {} }],
+  ];
+  for (const [name, args] of cases) {
+    assert.equal(typeof exports[name], 'function', `${name} 必须导出`);
+    assert.ok(exports[name](args), `${name} 渲染不能返回空`);
   }
+  // 侧边栏图标与整页都要能渲染（整页在关闭态也有内容）。
+  assert.equal(typeof exports.DevIcon, 'function');
+  assert.ok(exports.DevIcon({ size: 16 }));
+  assert.equal(typeof exports.DevTab, 'function');
+  assert.ok(exports.DevTab({}));
+});
+test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
+  const descriptor = await loadClient();
+  const exports = descriptor.factory(() => fakeReact());
+  const registered = [];
+  const hostile = {
+    slots: {
+      inject(name, callback) { return callback(); },
+      register(options) { registered.push(options); },
+    },
+  };
+  // 模拟 cordis 未注入服务时的 getter 抛错（真实崩溃就是这么发生的）
+  Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
+  assert.doesNotThrow(() => exports.apply(hostile));
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });

@@ -58,7 +58,7 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
   }, { account: () => { throw new Error('secret'); } });
 
   assert.deepEqual(routes.map((r) => [r.kind, r.path]), [
-    ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'],
+    ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'], ['exact', '/bilibili-bridge/api/settings/reset'],
     ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history', 'dev/log', 'dev/clear'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
   ]);
 
@@ -238,9 +238,9 @@ test('来源校验 fail closed：非回环、缺 Host、缺 Origin、跨源都�
   const cases = [
     { headers: TRUST, remote: '10.0.0.1' },
     { headers: { origin: TRUST.origin } },                        // 缺 host
-    { headers: { host: '127.0.0.1:1983' } },                      // 缺 origin
-    { headers: { host: 'localhost', origin: 'http://evil' } },
+    { headers: { host: 'localhost', origin: 'http://evil' } },    // 跨站来源
     { headers: { host: 'evil.example', origin: 'http://evil.example' } }, // DNS rebinding 形态
+    { headers: { host: 'localhost:1983', 'sec-fetch-site': 'cross-site' } }, // 缺 Origin 且标了跨站
     { headers: TRUST, remote: '' },
   ];
   for (const options of cases) {

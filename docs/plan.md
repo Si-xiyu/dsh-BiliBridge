@@ -75,7 +75,11 @@ Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
   - [x] M8.3c 常驻 worker：懒启动、空闲退出、崩溃重启、并发与超时控制
   - [x] M8.3d 预算（bundleId + TTL）与 ASR 持久化缓存；命中不扣预算（OCR 缓存已备、待接入）
 
-## v1 工具（18）
+## 基础读写主线（2026-11-03）
+
+P0/P1 实现与验收见 [read-write-rollout.md](read-write-rollout.md)：当前 25 个工具，保留原 19 个入口；视频投稿及其任务模型后置，Opus 已移出范围。合并和宿主重启验收尚未进行。
+
+## 历史 v1 工具（18，早于 transcribe）
 
 auth_status / auth_begin / auth_poll / auth_logout / me / video / user_videos /
 watch_later_list / watch_later_set / favorites_list / favorite_set / video_like_set /

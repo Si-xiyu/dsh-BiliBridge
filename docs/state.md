@@ -3,9 +3,10 @@
 > 这是**唯一**的当前状态文档。接手的人/agent 只读这一份就能知道项目在哪、什么能用、什么没做。
 > 一次性产物（旧 handoff、任务提示词）在 `docs/archive/` 里，仅作历史参考。
 
-更新时间：2026-11-04（Asia/Shanghai）
-阶段：**M8 媒体层 + 跨平台**——真抽帧（M8.1）、OCR（M8.2）、ASR（M8.3）均已落地；
-macOS 适配在 `auto-dev/MacOS` 分支完成（OCR 换 Apple Vision，ASR/ffmpeg 改为按平台解析）。
+更新时间：2026-11-06（Asia/Shanghai）
+阶段：**25 个工具 + 跨平台**——基础读写 P0/P1、开发者模式、动态字段增强已并入；
+macOS 适配（Apple Vision OCR、按平台解析 ASR/ffmpeg）合并在同一分支。未改审批策略，未重启 DSH。
+交付与限制见 [read-write-rollout.md](read-write-rollout.md)。以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
 
 ---
 
@@ -17,7 +18,7 @@ DSH 插件，把 B站只读能力 + 低风险写操作 + 两阶段视频证据�
 ```
 lib/bili/     B站客户端（不依赖 DSH）：http/wbi/auth/store/api/playurl/collections/comments/dynamics/search/user
 lib/media/    证据生产（不调用模型）：subtitles/danmaku/comments/frames/inspect/evidence/ffmpeg
-lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：19 个工具 + 写操作审批门禁
+lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：25 个工具 + 写操作审批门禁
 bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 ```
 
@@ -41,7 +42,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 **为什么 Windows 上必须给 CA**：gyan 的构建是 gnutls，且不读 Windows 证书库，直连 B站 CDN 会报
 `Peer certificate failed verification`。给 `-ca_file` 后正常；Node 侧不受影响（undici 自带信任链）。
 
-### 2.1 本机（macOS，`auto-dev/MacOS` 分支）
+### 2.1 本机（macOS，`auto-dev-macos` 分支）
 
 | 项 | 值 |
 | --- | --- |
@@ -61,7 +62,11 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 
 ## 3. 现在能做什么
 
-19 个工具（新增 `bilibili_transcribe`）。状态以 `docs/capability-matrix.md` 为准。摘要：
+25 个工具。状态以 `docs/capability-matrix.md` 与本轮 `docs/read-write-rollout.md` 为准。摘要：
+
+- 本轮新增：discover（热门/热搜/周刊/榜单）、notifications（含私信会话摘要）、comment_send、message_send、dynamic_publish、collect。
+- extract 是单视频平台文本入口，支持 subtitleCursor 与 danmakuWindow；保留 inspect / transcribe。
+- 发送类共用 JSONL 账本、五分钟判重、未决长期保护、预览 token 与只读核对；账号写入统一间隔/退避/风控暂停。
 
 - 认证：扫码登录、状态、退出（凭据仅当前用户可读：POSIX 0600 / Windows icacls）
 - 读：当前账号、视频元数据与统计、投稿列表、用户主页、搜索（视频/用户）、评论（含楼中楼）、动态（用户/关注流）
@@ -78,7 +83,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
     失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；可选 `ocr`（整帧/字幕带）与 `subtitleWindow` 窗口连续 OCR。
   - `bilibili_transcribe`（Stage 2）：窗口化 ASR，默认 30s、上限 300s，时间戳落在原视频轴；越界窗口报 INVALID_ARGUMENT。
 
-## 4. 本机验证记录
+## 4. 历史本机验证记录（2026-11-02）
 
 ### 4.1 匿名真实接口（2026-11-02）
 
@@ -147,7 +152,7 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 所以“匿名没字幕”不能当作“这个视频没有字幕”。
 
 
-## 5. 本轮完成
+## 5. 既有媒体层与设置页完成记录
 
 ### 5.1 Windows 平台适配（M8.0）
 
@@ -237,6 +242,9 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
   只提交改动字段、显示逐条错误、保存成功提示「下一次调用生效」。
 - 实测（临时数据目录直调 handler）：非法值 400 且文件不变；跨站 403；合法保存 200 且 `ffmpegPath`/`note` 保留；响应不含未知字段。
 - 生效方式：路由需要**重启 DSH**；之后改设置即时生效（analysisConfig 每次调用重读）。
+- 交互：**改完自动保存**（停 500ms 提交该字段），不需要点保存；另有「恢复默认」按钮（只重置已知设置段）。
+- 来源校验放宽为「远端回环 + Host 主机名回环 + Origin 主机名回环」，允许 `localhost` ↔ `127.0.0.1` 与端口差异；
+  403 会返回 `reason`（remote-not-loopback / host-not-loopback / origin-not-loopback …）。
 
 ## 5.9 设置页 P3：缓存清理、账号操作与最近调用（2026-11-03）
 
@@ -256,12 +264,28 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 - 开关：`config.json` 的 `dev.enabled`（默认关），设置页「开发者」分组里可改，改完下一次调用生效（开关有 2 秒缓存）。
 - 记录：`lib/devlog.mjs` 包住 `registerTool` 的 execute，记录 id / 时间 / 工具 / 脱敏参数 / 成功状态 / 错误码 / 耗时 / 结果字节与 4KB 预览；
   参数限 2KB，超限标 `truncated`；内存 200 条、`devlog.jsonl` 保留 500 行（进程内队列 + 文件锁 + 原子替换 + `restrictFile`）。
-- 脱敏：敏感键、`k=v` 文本、URL 编码形式、长不透明串（JWT/base64）、含 `upsig`/`deadline` 的 URL 全部打码；宁多勿少。
-- 查看：设置页「最近调用」列表（2 秒轮询，可展开参数与结果）；对话内右下角浮层（`shell.overlay`，注册失败静默跳过，不影响设置页）。
+- 脱敏：对象按键递归打码；**文本里出现凭据字段赋值就整段替换为 `[redacted-text]`**（强弱键两档，避免 `csrf_token` 变体漏检、也避免把 `face: smile` 这类正文抹掉）；含 `upsig`/`deadline` 的 URL 与长不透明串同样打码。
+- 查看：**右侧会话内 dock「B站调试」**，只显示**本会话**的调用。
+  - 类型：`sidebarRightTabs.register({ id: 'dsh-bilibili-bridge/devtools', kind: 'bilibili-devtools', title, guide })`；
+    `priority` 只认 `builtin` / `extension`（默认） / `fallback`，不要传自定义字符串。
+  - 内容：`slots.register({ name: 'sidebar.right.pane.tab', key: 同 id }, DevTab)`。
+  - 入口：右侧「开始」页卡片（order 40）；没有会话时右栏本身不渲染。
+  - 能力：搜索、只看失败、暂停轮询、复制单条 JSON、清空；`tab.visible` 为假时停轮询。
+- 记录带 `sessionId` / `callId`；面板按 `sessionId`（去掉 `session-` 前缀后）匹配，`GET /dev/log` 也支持 `session=` 过滤。
+- 设置页保留一份精简的「最近调用」列表（全局），并显示「右侧调试面板：已注册 / 等待服务」用于自检。
+- ~~左侧 main 全局页~~、~~右下角浮层~~ 都已移除：调试台定位是「本次会话调了什么」。
+
+### 客户端插件激活规则（踩过的坑）
+
+宿主判定：`apply` 抛错 → `kind: failed`（**整个 web boot 崩**）；`inject` 缺服务 → `kind: pending`（只是不激活）。
+所以客户端插件里：
+- `apply` 里任何可选槽位/服务都不能同步访问，更不能不包 try/catch；
+- 可选服务用 `ctx.inject([name], cb)` 等就绪后再用，缺了也不会拖垮启动；
+- 右侧栏服务的 `priority` 不是自由字符串。
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
 - 记录不阻塞工具返回：内存先记、落盘走后台队列。
 
-## 5.11 macOS 适配（2026-11-04，分支 `auto-dev/MacOS`）
+## 5.11 macOS 适配（2026-11-04，分支 `auto-dev-macos`）
 
 目标：让 Windows 上验证过的能力在 macOS 上**等价可用**，而不是另起一套实现。
 
@@ -289,10 +313,18 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
     当时机器负载较高（DeepSeek 桌面端等在跑），且 `beam_size=5`、`cpu_threads` 未调优 —— 列为待办，不作性能结论
 - 单测：143/143（跳过 1 条 Windows 专属 ACL 用例）
 
+## 5.12 写入门禁（B 线合并后调整）
+
+
+- **所有非 GET 请求都进 `limitedWrite`**；缺账号时直接 `AUTH_REQUIRED`，不再静默放行。
+- 进入 `effect` 之前的失败（凭证不足、状态文件损坏、抢锁超时、建目录失败）统一标 `submission=not-submitted`，
+  发送账本因此记 `FAILED` 而不是 `PENDING_CONFIRM`；已进入发送的失败原样上抛。
+- 写入状态文件做结构校验：`null`/数组/字符串、时间字段非数字一律判 `WRITE_STATE_CORRUPT` 并拒绝发送。
+
 ## 6. 还没做的（按顺序）
 
-1. **真实写操作验收**：dry-run 默认 + `intent=apply` 已实现，点赞往返已实测；收藏/稍后观看的 apply 尚未实测。
-2. **计划内但未做**：限流与 412 全局暂停、WBI -403 自动刷新、字幕 800 条续取、概览用真帧（M8.1b）。
+1. **本轮待验收**：新增工具在合并与重启后的宿主调用；评论、私信、图床与动态真实发送。收藏/稍后观看已在 2026-11-03 完成往返并恢复。
+2. **计划内但未做**：WBI -403 自动刷新、概览用真帧（M8.1b）。写限流、账号写入 412/429 暂停和字幕续取已实现。
 3. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
 4. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
 5. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
@@ -320,7 +352,7 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 | ffmpeg | 放二进制，写 `config.json#ffmpegPath`（或 `FFMPEG_PATH`） | 画面降级故事板，`inspect` 精度 ±3s |
 | CA 证书 | `cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`） | Windows 上 ffmpeg 连 CDN 报证书失败，同样降级 |
 | B站登录 | 重新扫码（或复制 `credentials.json`，但新 IP 可能触发风控） | 字幕 0 条、稍后观看/收藏全部 `AUTH_REQUIRED` |
-| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主里看不到 19 个工具 |
+| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主无法加载插件；本轮合并后应为 25 个工具 |
 | 重启宿主 | 插件没有 HMR | 改动不生效，容易出现“脚本结论和宿主不一致” |
 
 平台差异（Windows）：`chmod 0600` 无效 → 用 icacls；`/tmp` 落到盘根 → 用 `os.tmpdir()`；
@@ -336,7 +368,7 @@ npm test
 node tests/manual-frames.mjs BV1GJ411x7h7 auto 10000 60000
 node tests/manual-frames.mjs BV1GJ411x7h7 storyboard     # 强制故事板对照
 
-# 硬字幕带长图（识别引擎尚未接入）
+# 硬字幕带长图 / OCR 验证
 node tests/manual-ocr.mjs BV1pTx76QE8J 12 0.22
 
 # 匿名证据包（不写账号）

@@ -221,10 +221,10 @@ test('malformed upstream success cannot become an empty result', async () => {
   });
 });
 
-test('plugin registers 19 unique tools, with lossless new tool results', async () => {
+test('plugin registers 25 unique tools, with lossless new tool results', async () => {
   const definitions = [];
   apply({ tools: { register: def => definitions.push(def) }, on() {} });
-  assert.equal(definitions.length, 19); assert.equal(new Set(definitions.map(d => d.name)).size, 19);
+  assert.equal(definitions.length, 25); assert.equal(new Set(definitions.map(d => d.name)).size, 25);
   await mockFetch({ '/x/frontend/finger/spi': { code: 0, data: { b_3: 'fixture' } }, '/x/web-interface/wbi/search/type': { code: 0, data: { result: [{ mid: 1 }], numResults: 1 } } }, async () => {
     // Empty credential path, never real credential content.
     const old = process.env.BILI_DATA_DIR; process.env.BILI_DATA_DIR = '/tmp/bili-unit-nonexistent';

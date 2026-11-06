@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeWritable, trustedRequest } from '../../lib/media/settings-merge.mjs';
+import { explainTrust, mergeWritable, trustedRequest } from '../../lib/media/settings-merge.mjs';
 test('白名单合并保留未知字段且不修改输入',()=>{
  const current={ffmpegPath:'x',ffmpegCaFile:'y',note:'keep',budget:{roundsLimit:6,note:'nested'}};
  const result=mergeWritable(current,{budget:{roundsLimit:7,note:'ignored'},ffmpegPath:'ignored',unknown:1});
@@ -26,31 +26,31 @@ test('合并后的窗口关系与默认值',()=>{
  assert.deepEqual(mergeWritable({asr:{defaultWindowSeconds:90}},{asr:{defaultWindowSeconds:60,maxWindowSeconds:60}}).errors,[]);
  assert.deepEqual(mergeWritable({}, {asr:{defaultWindowSeconds:120}}).errors,[]);
 });
-test('loopback 与来源检查分支（fail closed）', () => {
-  // 回环 + Host + 同源 Origin 才放行
-  for (const remoteAddress of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
-    assert.equal(trustedRequest({ socket: { remoteAddress }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } }), true);
-  }
-  // 缺远端地址、非回环、缺 Host、缺 Origin、跨源、rebinding 形态都拒绝
-  const denied = [
-    { headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
-    { socket: { remoteAddress: '' }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
-    { socket: { remoteAddress: '10.0.0.1' }, headers: { host: 'localhost:12', origin: 'http://localhost:12' } },
-    { socket: { remoteAddress: '127.0.0.1' }, headers: { origin: 'http://localhost:12' } },
-    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost:12' } },
-    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost', origin: 'http://evil' } },
-    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'evil.example', origin: 'http://evil.example' } },
-    { socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost:12', referer: 'bad' } },
-  ];
-  for (const request of denied) assert.equal(trustedRequest(request), false, JSON.stringify(request));
-});
-test('来源比较做归一化：大小写、默认端口、IPv6 展开形式都视为同源', () => {
+test('loopback 与来源检查分支（宽松但仍是 fail closed）', () => {
   const ok = (headers, remote = '127.0.0.1') => trustedRequest({ socket: { remoteAddress: remote }, headers });
-  assert.equal(ok({ host: 'LOCALHOST:1983', origin: 'http://localhost:1983' }), true);
-  assert.equal(ok({ host: 'localhost:80', origin: 'http://localhost' }), true);
-  assert.equal(ok({ host: '[0:0:0:0:0:0:0:1]:1983', origin: 'http://[::1]:1983' }), true);
-  assert.equal(ok({ host: 'localhost:1983', origin: 'http://localhost:1984' }), false);
-  // https 的默认端口也要归一化
-  assert.equal(ok({ host: 'localhost:443', origin: 'https://localhost' }), true);
-  assert.equal(ok({ host: 'localhost:443', origin: 'https://localhost:444' }), false);
+  // 同机：localhost 与 127.0.0.1 互通、端口差异不影响
+  assert.equal(ok({ host: 'localhost:12', origin: 'http://localhost:12' }), true);
+  assert.equal(ok({ host: '127.0.0.1:12', origin: 'http://localhost:12' }), true);
+  // 同机不同端口必须拒绝：否则另一个端口上的页面可以跨站表单写配置
+  assert.equal(ok({ host: 'localhost:12', origin: 'http://localhost:99' }), false);
+  assert.equal(ok({ host: '127.0.0.1:12', origin: 'http://127.0.0.1:12' }), true);
+  // 同源 fetch 可能不带 Origin：没有跨站标记时放行
+  assert.equal(ok({ host: 'localhost:12' }), true);
+  // 以下必须拒绝
+  for (const request of [
+    { headers: { host: 'localhost:12', origin: 'http://localhost:12' } },                 // 缺远端
+    { headers: { origin: 'http://localhost:12' }, socket: { remoteAddress: '127.0.0.1' } }, // 缺 Host
+    { headers: { host: 'localhost:12', origin: 'http://evil' }, socket: { remoteAddress: '127.0.0.1' } },
+    { headers: { host: 'evil.example', origin: 'http://evil.example' }, socket: { remoteAddress: '127.0.0.1' } },
+    { headers: { host: 'localhost:12', 'sec-fetch-site': 'cross-site' }, socket: { remoteAddress: '127.0.0.1' } },
+    { headers: { host: 'localhost:12', origin: 'http://localhost:12' }, socket: { remoteAddress: '10.0.0.1' } },
+    { headers: { host: 'localhost:12', referer: 'bad' }, socket: { remoteAddress: '127.0.0.1' } },
+  ]) assert.equal(trustedRequest(request), false, JSON.stringify(request));
+});
+
+test('拒绝原因可用于诊断（前端 403 里会带 reason）', () => {
+  assert.equal(explainTrust({ socket: { remoteAddress: '10.0.0.1' }, headers: { host: 'localhost' } }).reason, 'remote-not-loopback');
+  assert.equal(explainTrust({ socket: { remoteAddress: '127.0.0.1' }, headers: {} }).reason, 'host-missing');
+  assert.equal(explainTrust({ socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'evil.example' } }).reason, 'host-not-loopback');
+  assert.equal(explainTrust({ socket: { remoteAddress: '127.0.0.1' }, headers: { host: 'localhost', origin: 'http://evil' } }).reason, 'origin-not-loopback');
 });
