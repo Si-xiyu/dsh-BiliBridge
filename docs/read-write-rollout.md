@@ -78,9 +78,9 @@ DSH `tools/pre-execute` 对六种 apply 操作统一返回 ask；发送类 check
 
 没有真实发送评论、动态、私信，也没有真实上传图片或创建定时草稿。榜单不伪造三日/七日历史维度。普通私信会话可能没有昵称，使用 talkerId 定位。Cookie 自动刷新、关注管理、投币、观看历史不在本轮范围。
 
-复现命令：
+复现命令（Windows / macOS 通用；macOS 上先 `BILI_DATA_DIR=~/.dsh/bilibili`）：
 
-```powershell
+```bash
 npm run test:single
 node tests/manual-foundation.mjs public
 node tests/manual-foundation.mjs account
@@ -89,5 +89,8 @@ node tests/manual-write-roundtrip.mjs            # 只读预览
 # 以下仅在用户确认脚本中的具体目标后运行：
 node tests/manual-write-roundtrip.mjs --apply
 ```
+
+macOS 上三组只读脚本已实跑通过（25 个工具、榜单/通知/字幕分页/批量采集均 ok），
+见 [macos-setup.md](macos-setup.md)。
 
 接口参考：[对照仓库源码](https://github.com/adoresever/bilibili-mcp/blob/main/mcp_server.py)、[动态发布与图床](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/dynamic/publish.md)、[通知](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/message/msg.md)、[私信](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/message/private_msg.md)、[榜单](https://github.com/pskdje/bilibili-API-collect/blob/main/docs/video_ranking/ranking.md)、[历史定时动态实现](https://github.com/StudyWithJeffrey/bilibili-api/blob/main/bilibili_api/dynamic.py)。历史接口参考不能代替真实写入验收。

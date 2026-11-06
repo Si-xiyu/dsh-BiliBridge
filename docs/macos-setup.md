@@ -193,6 +193,20 @@ BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-asr.mjs BV1KDNA6eEgr 20
 
 ---
 
+## 3.5 复验只读矩阵（可选）
+
+工具层有 25 个入口，三组只读冒烟脚本不写任何东西：
+
+```bash
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-foundation.mjs public   # 榜单/热搜/搜索
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-foundation.mjs account  # 通知/收藏夹/主页
+BILI_DATA_DIR=~/.dsh/bilibili node tests/manual-foundation.mjs text     # 字幕分页/弹幕窗口/批量采集
+```
+
+macOS 上三组均实跑通过（2026-11-06）。输入均为 `ok:true`，字幕分页示例为 800 + 776 条续取。
+
+---
+
 ## 4. config.json
 
 位置：`~/.dsh/bilibili/config.json`（可用 `BILI_DATA_DIR` 覆盖整个数据目录）。

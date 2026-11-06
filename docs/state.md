@@ -185,7 +185,9 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 - 覆盖度拆成两个指标，别混用：
   - `subtitles.coverage`：**区间并集 / 时长**（句子之间的气口会算进去，正常视频 0.95–0.99）。
   - `subtitles.coveredToMs` 与状态判定用的 extent：**完整字幕轨末端 / 时长**（判"轨道有没有断在中间"）。
-- "只返回前 800 条"是第三件事，用 `truncated` + `SUBTITLE_TRUNCATED` 单独提示，不并进 `partial`。
+- 单页最多 800 条：超页用 `truncated` + `SUBTITLE_TRUNCATED` 单独提示，不并进 `partial`；
+  续取走 `subtitles.nextCursor`（绑 bvid/cid/语言/完整字幕指纹），`coverage` 始终是完整轨道覆盖率，
+  `returnedRange` 是本页范围，两者分开返回。
 - 新增线索字段：`gaps[]`（`no_subtitles` / `subtitles_partial` / `no_danmaku` / `no_comments` / `no_visual`）、
   `suggestedWindows[]`（弹幕密度峰值前 3，纯计算）、`evidenceLevel`（`rich` / `text-only` / `thin`）。
 - `schemaVersion` 升到 `2`。实测：有字幕视频 411ms（level=rich）、无字幕视频 831ms（level=text-only）。
@@ -313,9 +315,16 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
     当时机器负载较高（DeepSeek 桌面端等在跑），且 `beam_size=5`、`cpu_threads` 未调优 —— 列为待办，不作性能结论
 - 单测：143/143（跳过 1 条 Windows 专属 ACL 用例）
 
+合并 `auto-dev`（25 工具）后在本机复验（2026-11-06）：
+
+- `npm test` 185 项（184 通过 / 1 条 Windows 专属跳过）
+- `tests/manual-foundation.mjs public`：25 个工具注册；popular / hotwords / weekly / rank / search 全 ok
+- `... account`：unread / replies / at / likes / messages / 收藏夹（19 个）/ 投稿 / 主页全 ok
+- `... text`：字幕分页 800 + 776 条续取、弹幕窗口、批量采集（partial=false）全 ok
+- 抽帧、Apple Vision OCR、ASR 解释器解析、设置页 `readStatus()` 三项运行时复验通过
+- 新增的 6 个工具都是纯 HTTP，脚本里没有平台假设；`publish.mjs` 读本机图片走 sharp + 文件句柄，macOS 同样可用（未做真实发送）
+
 ## 5.12 写入门禁（B 线合并后调整）
-
-
 - **所有非 GET 请求都进 `limitedWrite`**；缺账号时直接 `AUTH_REQUIRED`，不再静默放行。
 - 进入 `effect` 之前的失败（凭证不足、状态文件损坏、抢锁超时、建目录失败）统一标 `submission=not-submitted`，
   发送账本因此记 `FAILED` 而不是 `PENDING_CONFIRM`；已进入发送的失败原样上抛。
