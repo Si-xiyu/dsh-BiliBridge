@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameFeature, similarity, nearDuplicate, haarScores, temporalSegments, facilityGain, selectAdaptive } from '../../lib/media/adaptive-selection.mjs';
+import { frameFeature, similarity, nearDuplicate, haarScores, temporalSegments, facilityGain, selectAdaptive, refineForSharpness } from '../../lib/media/adaptive-selection.mjs';
 
 function solid(r, g, b) {
   return frameFeature(Buffer.from(Array.from({ length: 16 * 16 }, () => [r, g, b]).flat()), 16, 16);
@@ -88,4 +88,29 @@ test('zero objective gain does not itself trigger early stopping', () => {
   });
   assert.equal(result.frames.length, 2);
   assert.equal(result.stopReason, 'frame-limit');
+});
+
+test('明显黑屏候选：选得满时不占名额，选不满才放宽', () => {
+  const black = solid(0, 0, 0);
+  const frames = [frame(0, red), frame(1000, black), frame(2000, blue), frame(3000, green)];
+  const result = selectAdaptive(frames, { references: [frames[0]], maxFrames: 2, startMs: 0, endMs: 4000, candidateBudget: 100 });
+  assert.deepEqual(result.frames.map((f) => f.atMs), [2000, 3000], '黑屏不该挤掉有内容的画面');
+
+  const only = [frame(0, red), frame(1000, black)];
+  const relaxed = selectAdaptive(only, { references: [only[0]], maxFrames: 1, startMs: 0, endMs: 2000, candidateBudget: 100 });
+  assert.equal(relaxed.frames.length, 1, '只有黑屏可选时应放宽，而不是选 0 帧');
+});
+
+test('refineForSharpness：同片段 1s 内换更清晰的帧，不跨片段', () => {
+  const base = { atMs: 5000, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.05 } } };
+  const sharper = { atMs: 5600, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.2 } } };
+  const acrossSegment = { atMs: 7500, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.4 } } };
+  const segmentOf = (f) => (f.atMs < 6000 ? 0 : 1);
+
+  const picked = refineForSharpness([base, sharper, acrossSegment], [base], { segmentOf, shrinkWindowMs: 1500 });
+  assert.equal(picked[0], sharper);
+
+  const sameSegmentButFar = { atMs: 6300, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.4 } } };
+  const kept = refineForSharpness([base, sameSegmentButFar, acrossSegment], [base], { segmentOf, shrinkWindowMs: 1500 });
+  assert.equal(kept[0], base, '超过 1s 或跨片段都不替换');
 });

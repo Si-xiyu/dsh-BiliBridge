@@ -64,3 +64,12 @@ test('scan fallback, cancellation, source policy and persistent feature cache', 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('range 与 maxFrames 的错误信息能区分具体原因', () => {
+  assert.throws(() => adaptiveRange({ durationMs: 1000, maxFrames: 10 }), /maxFrames/);
+  assert.throws(() => adaptiveRange({ durationMs: 1000, maxFrames: 0 }), /maxFrames/);
+  assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: 500, endMs: 500 } }), /startMs < endMs/);
+  assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: 0, endMs: 2000 } }), /超出当前分 P/);
+  assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: -1, endMs: 500 } }), /超出当前分 P/);
+  assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: 1.5, endMs: 500 } }), /整数毫秒/);
+});

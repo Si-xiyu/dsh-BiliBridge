@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import { resolveToolchain, runFfmpeg, scanVideo } from '../../lib/media/ffmpeg.mjs';
 
 test('FFmpeg bounded low-resolution interval scan produces the expected RGB sampling grid', async (t) => {
-  try { await resolveToolchain(); } catch { t.skip('FFmpeg unavailable'); return; }
+  // 同进程里别的用例可能把 BILI_DATA_DIR 指向临时目录，导致解析不到 config 里的 ffmpegPath。
+  // 这里临时回到默认数据目录，失败才算真的没有 ffmpeg。
+  const saved = process.env.BILI_DATA_DIR;
+  delete process.env.BILI_DATA_DIR;
+  try { await resolveToolchain(); }
+  catch { process.env.BILI_DATA_DIR = saved; t.skip('FFmpeg unavailable'); return; }
+  if (saved !== undefined) process.env.BILI_DATA_DIR = saved;
   const dir = await mkdtemp(join(tmpdir(), 'bili-scan-smoke-'));
   try {
     const video = join(dir, 'source.mp4'), outFile = join(dir, 'scan.rgb');
