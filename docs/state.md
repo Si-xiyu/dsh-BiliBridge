@@ -348,4 +348,5 @@ node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 | `docs/plan.md` | 里程碑与门禁 |
 | `docs/compatibility.md` | 宿主版本、插件加载方式、平台限制 |
 | `docs/risk-probe.md` | 真实账号风控探测记录 + 字幕串台根因 |
+| `docs/review-2026-11-10.md` | Codex review 发现与修复对照 |
 | `docs/archive/` | 已归档的一次性文档 |
