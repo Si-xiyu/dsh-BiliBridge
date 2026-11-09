@@ -114,3 +114,15 @@ test('refineForSharpness：同片段 1s 内换更清晰的帧，不跨片段', (
   const kept = refineForSharpness([base, sameSegmentButFar, acrossSegment], [base], { segmentOf, shrinkWindowMs: 1500 });
   assert.equal(kept[0], base, '超过 1s 或跨片段都不替换');
 });
+
+test('refineForSharpness：资格线相对 base 固定，不会被先遇到的更高值抬高', () => {
+  const base = { atMs: 5000, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.1 } } };
+  const mid = { atMs: 5200, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.115 } } };
+  const top = { atMs: 5400, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.12 } } };
+  const segmentOf = () => 0;
+  // 旧实现先遇到 0.115 后，0.12 会被 0.115×1.1=0.1265 拒掉，导致依赖遍历顺序。
+  assert.equal(refineForSharpness([base, mid, top], [base], { segmentOf, shrinkWindowMs: 1500 })[0], top);
+  // 恰好 +10% 也算通过
+  const exact = { atMs: 5300, feature: { ...red, quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.11 } } };
+  assert.equal(refineForSharpness([base, exact], [base], { segmentOf, shrinkWindowMs: 1500 })[0], exact);
+});

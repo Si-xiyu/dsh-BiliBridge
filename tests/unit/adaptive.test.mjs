@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { adaptiveFrames, adaptiveRange, imageFeature } from '../../lib/media/adaptive.mjs';
+import { adaptiveFrames, adaptiveRange, imageFeature, mapReferenceFrames } from '../../lib/media/adaptive.mjs';
 
 test('adaptive range uses page duration, strict counts and absolute window boundaries', () => {
   assert.deepEqual(adaptiveRange({ durationMs: 10000 }), { startMs: 0, endMs: 10000, maxFrames: 9 });
@@ -72,4 +72,17 @@ test('range 与 maxFrames 的错误信息能区分具体原因', () => {
   assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: 0, endMs: 2000 } }), /超出当前分 P/);
   assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: -1, endMs: 500 } }), /超出当前分 P/);
   assert.throws(() => adaptiveRange({ durationMs: 1000, range: { startMs: 1.5, endMs: 500 } }), /整数毫秒/);
+});
+
+test('mapReferenceFrames 保留 atMs：片段覆盖计数依赖参考帧时间', () => {
+  const feature = () => ({
+    histogram: Array(96).fill(1 / 96),
+    hash: Array(63).fill(0),
+    quality: { brightness: 0.5, blackRatio: 0, sharpness: 0.1 },
+  });
+  const frames = [{ atMs: 1000, feature: feature() }, { atMs: 5000, feature: feature() }];
+  const mapped = mapReferenceFrames([2000, { atMs: 4000, feature: feature() }], frames);
+  assert.deepEqual(mapped.map((item) => item.atMs), [1000, 4000], '时间点必须映射到最近的扫描帧并保留 atMs');
+  assert.ok(mapped.every((item) => item.feature?.histogram?.length === 96));
+  assert.deepEqual(mapReferenceFrames([], frames), []);
 });

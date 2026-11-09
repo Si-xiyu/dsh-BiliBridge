@@ -77,3 +77,33 @@ test('Stage1 deadline includes fetching uniform references and preserves existin
   assert.equal(result.adaptive.status, 'failed');
   assert.equal(result.warnings[0].code, 'TIMEOUT');
 });
+
+test('故事板降级时，最终 adaptive 图继承 maxErrorMs=null 与 matchOffsetMs', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'bili-overview-err-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    const sharp = (await import('sharp')).default;
+    const buffer = await sharp({ create: { width: 64, height: 36, channels: 3, background: '#0f0' } }).png().toBuffer();
+    const result = await buildOverviewWithAdaptive(options, {
+      buildOverview: async () => overview(), adaptiveConfig: async () => ({ adaptiveEnabled: true }),
+      uniformReferences: async () => [],
+      buildAdaptiveInspection: async () => ({
+        frames: [{ requestedMs: 3000 }],
+        _ocrFrames: [{ requestedMs: 3000, actualMs: 3000, buffer }],
+        images: [{ accuracy: 'storyboard', maxErrorMs: null, matchOffsetMs: 0, typicalGapMs: 5000, path: null }],
+        selection: { source: 'storyboard', selectedFrames: 1, stopReason: 'frame-limit' },
+      }),
+    });
+    const image = result.images.find((item) => item.kind === 'adaptive');
+    assert.ok(image, '应生成 adaptive 图');
+    assert.equal(image.accuracy, 'storyboard');
+    assert.equal(Object.hasOwn(image, 'maxErrorMs'), true, 'maxErrorMs 必须显式存在');
+    assert.equal(image.maxErrorMs, null, '源帧误差未知必须是 null，而不是匹配偏差 0');
+    assert.equal(image.matchOffsetMs, 0);
+    assert.equal(image.typicalGapMs, 5000);
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
