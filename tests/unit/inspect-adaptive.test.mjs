@@ -58,6 +58,15 @@ test('empty adaptive selection returns metadata without rendering an empty sheet
   assert.equal(result.selection.selectedFrames, 0);
 });
 
+test('adaptive total deadline reports timeout while user cancellation remains cancellation', async () => {
+  const choose = async ({ signal }) => new Promise((resolve, reject) => {
+    const abort = () => reject(Object.assign(new Error('cancel'), { code: 'CANCELLED' }));
+    if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true });
+  });
+  await assert.rejects(buildAdaptiveInspection({ ...options, budgetMs: 5 }, { adaptiveFrames: choose }), { code: 'TIMEOUT' });
+  await assert.rejects(buildAdaptiveInspection({ ...options, signal: AbortSignal.abort() }, { adaptiveFrames: choose }), { code: 'CANCELLED' });
+});
+
 test('inspect tool exposes one adaptive mode, bounded count and window without registering another tool', () => {
   const tools = [];
   apply({ on() {}, tools: { register(tool) { tools.push(tool); } } });

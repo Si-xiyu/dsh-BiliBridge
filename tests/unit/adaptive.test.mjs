@@ -46,6 +46,12 @@ test('scan fallback, cancellation, source policy and persistent feature cache', 
     assert.equal(real, 4);
     const reused = await adaptiveFrames(options, { realScan: async () => { throw new Error('should use cache'); } });
     assert.equal(reused.cached, true);
+    await adaptiveFrames({ ...options, cid: 3, range: undefined }, { realScan: async () => ({
+      frames: [{ atMs: 1000, feature }, { atMs: 3000, feature }, { atMs: 9000, feature }], source: 'ffmpeg',
+    }) });
+    const windowHit = await adaptiveFrames({ ...options, cid: 3 }, { realScan: async () => { throw new Error('must reuse full scan'); } });
+    assert.equal(windowHit.cached, true);
+    assert.ok(windowHit.frames.every((frame) => frame.atMs >= 2000 && frame.atMs < 8000));
     for (const bad of [null, { atMs: 3000, feature: { ...feature, histogram: Array(96).fill(0) } }]) {
       const cacheDir = join(dir, 'cache', 'adaptive');
       for (const file of await readdir(cacheDir)) await writeFile(join(cacheDir, file), JSON.stringify({
