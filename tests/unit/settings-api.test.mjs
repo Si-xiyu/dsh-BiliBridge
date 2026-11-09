@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeCache, assembleStatus, readStatus, registerSettingsRoutes } from '../../lib/settings-api.mjs';
+import { summarizeCache, assembleStatus, readStatus, registerSettingsRoutes, selectForCleanup } from '../../lib/settings-api.mjs';
 import { listAnalyses } from '../../lib/media/budget.mjs';
 
 test('缓存按真实文件名归类（asr / storyboard / cover / inspect / avatar / 其它）', () => {
@@ -19,6 +19,16 @@ test('缓存按真实文件名归类（asr / storyboard / cover / inspect / avat
   assert.deepEqual(result.buckets.map((b) => [b.name, b.files]), [
     ['asr', 1], ['storyboard', 2], ['cover', 1], ['inspect', 1], ['avatar', 1], ['其它', 1],
   ]);
+});
+
+test('缓存清理认得旧拼图名与分张后的 -sheet 后缀', () => {
+  // 旧布局：inspect-<cid>-<ts>.jpg；新布局：inspect-<cid>-<ts>-<sheet>.jpg
+  assert.equal(selectForCleanup('BV1KDNA6eEgr/inspect-123-1750000000000.jpg', 'media'), true);
+  assert.equal(selectForCleanup('BV1KDNA6eEgr/inspect-123-1750000000000-2.jpg', 'media'), true);
+  // 多一层后缀只允许在 inspect 上；不认识的命名不能被误删。
+  assert.equal(selectForCleanup('BV1KDNA6eEgr/inspect-123-1750000000000-2-3.jpg', 'media'), false);
+  assert.equal(selectForCleanup('BV1KDNA6eEgr/whatever-1-2.jpg', 'media'), false);
+  assert.equal(selectForCleanup('../inspect-1-2-3.jpg', 'media'), false);
 });
 
 test('status 读取器与纯组装：运行时失败给错误码，账号失败仍可渲染', async () => {

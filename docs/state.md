@@ -60,7 +60,8 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
     （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
     **不跑 ASR、不跑 OCR**；没有平台字幕就 `subtitles.status="empty"`。
   - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差约一帧，不给毫秒上界），
-    失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；可选 `ocr`（整帧/字幕带）与 `subtitleWindow` 窗口连续 OCR。
+    失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；多帧按**每张最多 6 格（2×3）**均分拆图
+    （7→4+3、9→5+4），避免细长拼图被宿主整体降采样；可选 `ocr`（整帧/字幕带）与 `subtitleWindow` 窗口连续 OCR。
   - `bilibili_transcribe`（Stage 2）：窗口化 ASR，默认 30s、上限 300s，时间戳落在原视频轴；越界窗口报 INVALID_ARGUMENT。
 
 ## 4. 历史本机验证记录（2026-11-02）
