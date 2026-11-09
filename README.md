@@ -8,7 +8,7 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
 - 工具层 **25 个**：原有 19 个入口保持兼容，新增热点、通知、评论发送、私信发送、动态发布和批量采集；已与 auto-dev 的开发者模式及动态字段增强集成，合并后测试 161/161 通过，新增工具仍待重启 DSH 后做宿主验收。
-- 视频理解：Stage 1（文本 + 封面 + 故事板九宫格）可用；Stage 2 已接 **ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）与 **窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
+- 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
 - 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。评论、私信、动态已实现预览、审批、持久化判重和结果核对，真实发送尚未验收。
 - P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
@@ -42,8 +42,8 @@ Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node 
 | `bilibili_watch_later_list` / `bilibili_watch_later_set` | 稍后观看 |
 | `bilibili_favorites_list` / `bilibili_favorite_set` | 收藏夹 |
 | `bilibili_video_like_set` | 点赞 |
-| `bilibili_extract` | Stage 1 证据包（文本 + 2 张图） |
-| `bilibili_inspect` | Stage 2 定向补帧 |
+| `bilibili_extract` | Stage 1 证据包（文本 + 封面／Uniform／Adaptive，最多 3 张图） |
+| `bilibili_inspect` | Stage 2 定向补帧或全片／区间自适应选帧，数量 1–9，每图最多 2×3 |
 | `bilibili_transcribe` | Stage 2 按窗口 ASR |
 | `bilibili_search` | 视频 / 用户搜索（WBI） |
 | `bilibili_comments` | 热门 / 最新评论与最多 3 条楼中楼 |
@@ -109,6 +109,8 @@ macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 - 故事板精度约 ±1s；读小字需要 ffmpeg。
 
 ## 已知限制
+
+- 自适应选帧默认启用，采用传统视觉特征、Haar 与 Facility Location；扫描和截图有耗时预算，失败降级。用法、配置及实测见 [自适应代表帧](docs/adaptive-frames.md)。视觉代表性不等于语义重要性。
 
 - 字幕必须走 WBI 签名的 `/x/player/wbi/v2`；不带签名的 `/x/player/v2` 会返回别的视频的 AI 字幕，不能使用。
 - 长字幕每页最多 800 条；将 `subtitles.nextCursor` 传回 `extract.subtitleCursor` 续取。轨道变化需从头读取；完整轨道覆盖率与本页范围分开返回。
