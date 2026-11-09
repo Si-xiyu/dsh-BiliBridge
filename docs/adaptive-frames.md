@@ -2,7 +2,7 @@
 
 ## 使用
 
-`bilibili_extract` 默认返回封面、原有 Uniform 九宫格及最多九帧的 Adaptive 九宫格。`include.frames=false` 和字幕续页保持原有跳过画面逻辑。`adaptive` 字段报告选帧数量、范围、来源、缓存命中和停止原因。Adaptive 为零帧时不生成空图；不足九帧时剩余格留空。
+`bilibili_extract` 默认返回 **2 张图**：Uniform 九宫格（左上第一格为封面，其余 8 格是故事板时间点）与最多九帧的 Adaptive 九宫格。封面并入九宫格后不再单独占一个附件额度。`include.frames=false` 和字幕续页保持原有跳过画面逻辑。`adaptive` 字段报告选帧数量、范围、来源、缓存命中和停止原因。Adaptive 为零帧时不生成空图；不足九帧时剩余格留空。
 
 `bilibili_inspect` 默认仍是原有定向模式，接受 `timestampsMs` 或 `intervals`。自适应模式示例：
 
