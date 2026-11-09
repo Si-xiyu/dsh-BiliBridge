@@ -1,15 +1,16 @@
 # 能力矩阵与只读验收
 
-## 当前补充：2026-11-09 dev-op 读写补全
+## 当前补充：2026-11-09/10 dev-op 读写补全
 
-当前代码为 **27 个工具**，保持四个 auth 入口和单一 extract 平台文本入口。新增能力均通过 224/224 离线测试；库层私信读取已用真实账号做过只读探测，但**尚未重启宿主做工具层验收**，也未做真实 apply。
+当前代码为 **27 个工具**，保持四个 auth 入口和单一 extract 平台文本入口。新增能力通过 225/225 离线测试；2026-11-10 已用真实账号完成库层写 E2E（稍后观看、收藏、评论、图文动态、私信），但**尚未重启宿主做工具层/审批路径验收**。
 
 | 能力 | 实际 endpoint / 实现 | 本轮验证 |
 | --- | --- | --- |
-| messages | api.vc get_sessions / fetch_session_msgs | 真实账号只读探测通过（未展示正文）；会话/正文/游标/鉴权单测通过；工具层待宿主重启 |
-| dynamics 详情/原动态 | /x/polymer/web-dynamic/v1/detail；origin 保留原动态 text/title/bvid/pics/url | 单测通过；真实详情与图片附件未验收 |
-| content_manage | /x/v2/reply/del、api.vc rm_dynamic、dynamic_draft list/rm_draft/publish_now | implemented；preview/apply、归属校验、12022/500404、草稿操作模拟通过；真实删除未验收 |
-| 写错误透传 | sendOnce/check 保留 errorMessage/biliCode/biliMessage/hint；21047→DM_RESTRICTED | 21047 模拟复现通过；真实第二条私信待 E2E |
+| messages | api.vc get_sessions / fetch_session_msgs | 真实账号只读探测通过；E2E 用它读回私信；工具层待宿主重启 |
+| dynamics 详情/原动态 | /x/polymer/web-dynamic/v1/detail；origin 保留原动态 text/title/bvid/pics/url | 真实发布后 detail 回读成功；图片附件（工具层）未验收；删除后 4101152 已映射 NOT_FOUND |
+| content_manage | /x/v2/reply/del、api.vc rm_dynamic、dynamic_draft list/rm_draft/publish_now | 真实删除评论/动态成功并回读；定时草稿仍为模拟 |
+| 写 E2E | 稍后观看、收藏、评论、图文动态、私信 | 真实账号：add/remove verified；评论 SENT→删除；动态 SENT→删除；私信 SENT→读回；同文再发 DUPLICATE |
+| 写错误透传 | sendOnce/check 保留 errorMessage/biliCode/biliMessage/hint；21047→DM_RESTRICTED | 21047 模拟复现通过；本会话对方曾回复，真实 21047 未触发 |
 | messages 隐私 | 工具标记 sensitive；devlog 不落正文与结果预览 | 单测通过 |
 | 工具预算 | 27 个工具 schema 约 19,145 bytes | 测试上限 20,000 bytes |
 

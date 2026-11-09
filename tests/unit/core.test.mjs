@@ -86,6 +86,8 @@ test('平台原话优先保留；21047 映射为不可重试的 DM_RESTRICTED', 
   const quota = fromBiliCode(21046, '你发消息的频率太高了，请在24小时后再发吧~');
   assert.equal(quota.code, 'RATE_LIMITED');
   assert.equal(quota.pauseMs, 24 * 60 * 60 * 1000);
+
+  assert.equal(fromBiliCode(4101152, '动态不可见').code, 'NOT_FOUND');
 });
 
 test('媒体 URL 白名单：只放行 B站 域名，挡住内网与外部地址', () => {

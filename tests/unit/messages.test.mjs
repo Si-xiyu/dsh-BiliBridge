@@ -63,6 +63,15 @@ test('thread 投影正文、图片、方向与分页游标', async () => {
   }, () => listMessages({ jar, talkerId: '456', cursor: data.nextCursor }));
 });
 
+test('系统提示 msgType 18 的数组内容转成可读文本', async () => {
+  const data = await withFetch(async () => Response.json({ code: 0, data: { has_more: 0, messages: [
+    { sender_uid: 0, msg_type: 18, content: '[{"text":"对方主动回复或关注你前，最多发送1条消息","color_day":"#9499A0"}]', timestamp: 1700000000, msg_key: 3, msg_seqno: 1, msg_status: 0 },
+  ] } }), () => listMessages({ jar, talkerId: '456', size: 5 }));
+  assert.equal(data.items[0].msgType, 18);
+  assert.equal(data.items[0].text, '对方主动回复或关注你前，最多发送1条消息');
+  assert.equal(data.items[0].direction, 'in');
+});
+
 test('私信读取的鉴权、参数与游标绑定', async () => {
   await assert.rejects(listSessions({ jar: new CookieJar({ DedeUserID: '123' }) }), { code: 'AUTH_REQUIRED' });
   await assert.rejects(listSessions({ jar, sessionType: 6 }), { code: 'INVALID_ARGUMENT' });

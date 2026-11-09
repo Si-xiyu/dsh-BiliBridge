@@ -7,9 +7,9 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。当前 224/224 测试通过；新增工具仍待重启 DSH 后做宿主验收。
+- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。当前 225/225 测试通过；新增工具仍待重启 DSH 后做宿主验收。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
-- 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。评论、私信、动态已实现预览、审批、持久化判重和结果核对，真实发送尚未验收。
+- 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。2026-11-10 又用真实账号完成评论、图文动态、私信的库层 E2E：评论/动态已回读并清理，私信成功发送并读回（留下一条测试消息）；21047 未在该会话触发（对方曾回复），错误透传由模拟与历史真实报错覆盖。宿主工具层与审批路径仍待重启 DSH 后验收。
 - P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
 ## 外部依赖：ffmpeg（可选，但决定画面质量）
@@ -91,6 +91,8 @@ node bin/bili.mjs poll 30     # 轮询
 node bin/bili.mjs latest      # 我最新投稿 + 播放量
 
 npm run test:single           # 单进程跑单测（受限沙箱里 npm test 的子进程会 EPERM）
+node tests/manual-op-e2e.mjs            # 写操作 dry-run（只读 + preview）
+node tests/manual-op-e2e.mjs --apply    # 真实写入，逐项回读并清理；私信会留下一条测试消息
 node tests/manual-evidence.mjs BV1YLHu6zEDp
 node tests/manual-read.mjs search "编程" --type video
 node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
