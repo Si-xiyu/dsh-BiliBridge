@@ -7,7 +7,7 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 **25 个**：原有 19 个入口保持兼容，新增热点、通知、评论发送、私信发送、动态发布和批量采集；已与 auto-dev 的开发者模式及动态字段增强集成，合并后测试 161/161 通过，新增工具仍待重启 DSH 后做宿主验收。
+- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。当前 224/224 测试通过；新增工具仍待重启 DSH 后做宿主验收。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
 - 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。评论、私信、动态已实现预览、审批、持久化判重和结果核对，真实发送尚未验收。
 - P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
@@ -48,15 +48,17 @@ Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node 
 | `bilibili_search` | 视频 / 用户搜索（WBI） |
 | `bilibili_comments` | 热门 / 最新评论与最多 3 条楼中楼 |
 | `bilibili_user_profile` | 用户主页、粉丝 / 关注数、可取得时的投稿数 |
-| `bilibili_dynamics` | 用户动态 / 当前账号关注动态 |
+| `bilibili_dynamics` | 用户/关注流动态；`dynamicId` 读详情，转发保留原动态索引与原图，可选图片附件 |
 | `bilibili_discover` | 热门 / 热搜 / 每周必看 / 排行榜 |
 | `bilibili_notifications` | 未读 / 回复 / @ / 点赞 / 私信会话摘要 |
+| `bilibili_messages` | 私信会话列表与正文读取（只读、不标记已读，正文截断） |
 | `bilibili_comment_send` | 发表评论或回复 |
 | `bilibili_message_send` | 文字私信 |
 | `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时动态 |
+| `bilibili_content_manage` | 删除自己的评论/动态、列出/删除/立即发布定时草稿 |
 | `bilibili_collect` | 有上限的搜索后批量评论、字幕采集 |
 
-六个写工具仅 `intent=apply` 在代码层走 `tools/pre-execute` 的 `ask`。发送类先 preview 获取绑定正文、目标和素材的 previewToken；结果不明返回 PENDING_CONFIRM，用同一工具的 check 核对，禁止盲目重发。所有账号写请求共用最小间隔、失败退避与风控暂停。
+七个写工具（含 `bilibili_content_manage`）仅 `intent=apply` 在代码层走 `tools/pre-execute` 的 `ask`。发送类先 preview 获取绑定正文、目标和素材的 previewToken；结果不明返回 PENDING_CONFIRM，用同一工具的 check 核对，禁止盲目重发。删除/草稿操作同样先 preview 绑定目标，但使用独立的结果语义，不套发送账本。所有账号写请求共用最小间隔、失败退避与风控暂停；平台原话（如 21047）会原样返回。
 
 ## 安装（开发版）
 
@@ -77,7 +79,7 @@ cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridg
 
 macOS/Linux：把上面的 `mklink /J` 换成 `ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`。
 
-合并本轮分支并重启 DSH 后，新会话应能看到 25 个 `bilibili_*` 工具；新增工具的宿主验收仍待此步骤。**插件没有 HMR，改 `lib/` 必须重启宿主。**
+合并本轮分支并重启 DSH 后，新会话应能看到 27 个 `bilibili_*` 工具；新增工具的宿主验收仍待此步骤。**插件没有 HMR，改 `lib/` 必须重启宿主。**
 
 ## 开发 CLI
 

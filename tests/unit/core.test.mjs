@@ -69,6 +69,25 @@ test('业务码映射到稳定错误码', () => {
   assert.equal(fromBiliCode(-9999).code, 'UPSTREAM_ERROR');
 });
 
+test('平台原话优先保留；21047 映射为不可重试的 DM_RESTRICTED', () => {
+  const restricted = fromBiliCode(21047, '对方主动回复或关注你前，最多发送1条消息~');
+  assert.equal(restricted.code, 'DM_RESTRICTED');
+  assert.equal(restricted.message, '对方主动回复或关注你前，最多发送1条消息~');
+  assert.equal(restricted.biliMessage, '对方主动回复或关注你前，最多发送1条消息~');
+  assert.equal(restricted.biliCode, 21047);
+  assert.equal(restricted.retryable, false);
+  assert.match(restricted.hint, /最多发送 1 条/);
+
+  const unknown = fromBiliCode(987654, '平台自己的错误原话');
+  assert.equal(unknown.code, 'UPSTREAM_ERROR');
+  assert.match(unknown.message, /平台自己的错误原话/);
+  assert.equal(unknown.biliMessage, '平台自己的错误原话');
+
+  const quota = fromBiliCode(21046, '你发消息的频率太高了，请在24小时后再发吧~');
+  assert.equal(quota.code, 'RATE_LIMITED');
+  assert.equal(quota.pauseMs, 24 * 60 * 60 * 1000);
+});
+
 test('媒体 URL 白名单：只放行 B站 域名，挡住内网与外部地址', () => {
   assert.equal(assertMediaUrl('//i0.hdslb.com/bfs/x.jpg').hostname, 'i0.hdslb.com');
   assert.equal(assertMediaUrl('https://upos-sz-mirror.bilivideo.com/a.m4s').protocol, 'https:');

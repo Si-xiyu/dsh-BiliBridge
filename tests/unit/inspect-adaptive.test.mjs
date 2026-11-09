@@ -74,5 +74,5 @@ test('inspect tool exposes one adaptive mode, bounded count and window without r
   assert.deepEqual(inspect.parameters.properties.selection.enum, ['targeted', 'adaptive']);
   assert.equal(inspect.parameters.properties.maxFrames.maximum, 9);
   assert.deepEqual(inspect.parameters.properties.range.required, ['startMs', 'endMs']);
-  assert.equal(tools.length, 25);
+  assert.equal(tools.length, 27);
 });

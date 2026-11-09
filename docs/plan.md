@@ -77,7 +77,7 @@ Stage 2  循环、Agent 主导 —— 每次调用都有明确成本与预算
 
 ## 基础读写主线（2026-11-03）
 
-P0/P1 实现与验收见 [read-write-rollout.md](read-write-rollout.md)：当前 25 个工具，保留原 19 个入口；视频投稿及其任务模型后置，Opus 已移出范围。合并和宿主重启验收尚未进行。
+P0/P1 实现与验收见 [read-write-rollout.md](read-write-rollout.md)：当前 27 个工具，保留原 19 个入口；视频投稿及其任务模型后置，Opus 已移出范围。合并和宿主重启验收尚未进行。
 
 ## 历史 v1 工具（18，早于 transcribe）
 

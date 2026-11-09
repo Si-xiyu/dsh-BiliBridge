@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { collectPics, originIndex, projectDynamic } from '../../lib/bili/dynamics.mjs';
+import { collectPics, getDynamicDetail, originIndex, projectDynamic } from '../../lib/bili/dynamics.mjs';
 
 const author = (mid, name, pubTs = 1700000000) => ({ module_author: { mid, name, pub_ts: pubTs } });
 
@@ -72,6 +72,10 @@ test('转发动态保留原动态索引，正文仍合并方便直接读', () =>
     type: 'DYNAMIC_TYPE_AV',
     publishedAt: result.origin.publishedAt,
     author: { mid: '2', name: '原作者' },
+    text: '原动态正文',
+    title: '原视频标题',
+    bvid: 'BV1xx411c7mD',
+    url: 'https://t.bilibili.com/999',
   });
   assert.match(result.origin.publishedAt, /^20\d\d-/);
   assert.equal(result.bvid, 'BV1xx411c7mD');
@@ -90,4 +94,43 @@ test('collectPics / originIndex 的边界', () => {
   assert.deepEqual(collectPics({ draw: { items: [{ src: '' }, { src: 'https://x/1.jpg' }] } }), ['https://x/1.jpg']);
   assert.equal(originIndex(undefined), undefined);
   assert.deepEqual(originIndex({ dynamicId: '1' }), { dynamicId: '1', type: null, publishedAt: null, author: null });
+});
+
+test('转发的图文原动态把原图放进 origin.pics，不丢图', () => {
+  const original = {
+    id_str: '999', type: 'DYNAMIC_TYPE_DRAW',
+    modules: {
+      ...author(2, '原作者', 1700001000),
+      module_dynamic: { desc: { text: '原图动态' }, major: { draw: { items: [{ src: 'https://i0.hdslb.com/o.jpg' }] } } },
+    },
+  };
+  const item = { id_str: '222', type: 'DYNAMIC_TYPE_FORWARD', modules: author(1, '转发者'), orig: original };
+  const result = projectDynamic(item);
+  assert.equal(result.text, '原图动态');
+  assert.deepEqual(result.origin.pics, ['https://i0.hdslb.com/o.jpg']);
+  assert.equal(result.origin.url, 'https://t.bilibili.com/999');
+});
+
+test('按 dynamicId 读取详情并复用同一投影', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    assert.equal(url.pathname, '/x/polymer/web-dynamic/v1/detail');
+    assert.equal(url.searchParams.get('id'), '222');
+    return Response.json({ code: 0, data: { item: {
+      id_str: '222', type: 'DYNAMIC_TYPE_DRAW', modules: {
+        ...author(1, 'UP', 1700002000),
+        module_dynamic: { desc: { text: '详情' }, major: { draw: { items: [{ src: 'https://i0.hdslb.com/d.jpg' }] } } },
+      },
+    } } });
+  };
+  try {
+    const detail = await getDynamicDetail({ dynamicId: '222' });
+    assert.equal(detail.dynamicId, '222');
+    assert.equal(detail.text, '详情');
+    assert.deepEqual(detail.pics, ['https://i0.hdslb.com/d.jpg']);
+    assert.equal(detail.url, 'https://t.bilibili.com/222');
+  } finally {
+    globalThis.fetch = original;
+  }
 });

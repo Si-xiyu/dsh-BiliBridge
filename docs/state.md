@@ -5,8 +5,17 @@
 
 更新时间：2026-11-09（Asia/Shanghai）
 
-新增：Stage 1 默认 Uniform + Adaptive 双九宫格；inspect 支持全片／区间自适应选帧，复用 maxFrames 和最多 2×3 拼图。新增实现与真实 B站验收见 [adaptive-frames.md](adaptive-frames.md)。当前自动测试 204/204，通过不代表已完成多类别语义质量或 DSH 宿主附件验收。以下既有阶段记录保留历史统计。
-阶段：**基础读写 P0/P1 与 auto-dev 功能已完成集成**；25 个工具，合并后 161/161 测试通过，真实读取与收藏/稍后观看往返通过。保留设置页 P3、开发者模式、十条设置路由及动态图片/原动态索引；未改审批策略，未重启 DSH。交付与限制见 [read-write-rollout.md](read-write-rollout.md)。以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
+新增：Stage 1 默认 Uniform + Adaptive 双九宫格；inspect 支持全片／区间自适应选帧，复用 maxFrames 和最多 2×3 拼图。新增实现与真实 B站验收见 [adaptive-frames.md](adaptive-frames.md)。当前自动测试 **224/224**，通过不代表已完成多类别语义质量或 DSH 宿主附件验收。以下既有阶段记录保留历史统计。
+阶段：**基础读写 P0/P1 与 auto-dev 功能已完成集成，dev-op 读写补全已实现但未做宿主重启验收**；27 个工具，224/224 测试通过，真实读取与收藏/稍后观看往返通过。保留设置页 P3、开发者模式、十条设置路由及动态图片/原动态索引；未改审批策略，未重启 DSH。交付与限制见 [read-write-rollout.md](read-write-rollout.md)。以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
+
+## 0. 2026-11-09 dev-op：读写补全
+
+- 新增 `bilibili_messages`：会话列表（支持未关注/陌生人/系统等 sessionType）与私信正文读取；只读、不标记已读，正文截断 500 字，图片只给 URL。库层已用真实账号只读探测 `get_sessions` / `fetch_session_msgs`，宿主工具待重启验收。
+- `bilibili_dynamics` 增加 `dynamicId` 详情与 `includeImages`（最多 9 张，默认 3）；`origin` 增加原动态正文/标题/bvid/图片/URL，转发原图不再丢失。
+- 新增 `bilibili_content_manage`：删除自己的评论/动态、列出/删除/立即发布定时草稿；删除与立即发布走 preview/apply + previewToken，`intent=apply` 进审批。
+- 发送失败不再只返回错误码：`sendOnce`/`check` 保留 `errorMessage`、`biliCode`、`biliMessage`、`hint`、`retryable`；21047 映射为 `DM_RESTRICTED`（不可重试），21046/21020 带暂停时长；未知业务码也保留 B 站原话。
+- 私信读取与发送标记为敏感工具，devlog 不落正文/结果预览；工具 schema 27 个约 19,145 bytes（测试上限 20,000）。
+- **未做**：重启 DSH 后的宿主验收、评论/私信/动态/收藏/稍后观看的 apply 真实 E2E、真实动态图片附件、真实删除/草稿操作。
 
 ---
 
@@ -18,7 +27,7 @@ DSH 插件，把 B站只读能力 + 低风险写操作 + 两阶段视频证据�
 ```
 lib/bili/     B站客户端（不依赖 DSH）：http/wbi/auth/store/api/playurl/collections/comments/dynamics/search/user
 lib/media/    证据生产（不调用模型）：subtitles/danmaku/comments/frames/inspect/evidence/ffmpeg
-lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：25 个工具 + 写操作审批门禁
+lib/tools/    DSH 适配层（唯一接触 ctx 的地方）：27 个工具 + 写操作审批门禁
 bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 ```
 
@@ -44,7 +53,7 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 
 ## 3. 现在能做什么
 
-25 个工具。状态以 `docs/capability-matrix.md` 与本轮 `docs/read-write-rollout.md` 为准。摘要：
+27 个工具。状态以 `docs/capability-matrix.md` 与本轮 `docs/read-write-rollout.md` 为准。摘要：
 
 - 本轮新增：discover（热门/热搜/周刊/榜单）、notifications（含私信会话摘要）、comment_send、message_send、dynamic_publish、collect。
 - extract 是单视频平台文本入口，支持 subtitleCursor 与 danmakuWindow；保留 inspect / transcribe。
@@ -275,11 +284,12 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ## 6. 还没做的（按顺序）
 
-1. **本轮待验收**：新增工具在合并与重启后的宿主调用；评论、私信、图床与动态真实发送。收藏/稍后观看已在 2026-11-03 完成往返并恢复。
-2. **计划内但未做**：WBI -403 自动刷新、概览用真帧（M8.1b）。写限流、账号写入 412/429 暂停和字幕续取已实现。
-3. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
-4. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
-5. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
+1. **dev-op 待宿主验收**：重启 DSH 后验证 27 个工具；评论、私信、动态发布、收藏、稍后观看的 apply 真实 E2E；私信正文读取、动态详情/图片附件、删除评论/动态、草稿操作的真实调用。收藏/稍后观看已有 2026-11-03 的库层往返记录，但仍需宿主工具层复验。
+2. **已知 P1 缺口**：关注/取关与粉丝列表、投币、观看/搜索历史、评论点赞/置顶、动态点赞/转发/评论、收藏夹新建/重命名/删除与默认夹标志修正、稍后观看清空/批量、通知标记已读/系统消息、`getFavoriteState` 的全量扫描优化。
+3. **计划内但未做**：WBI -403 自动刷新、概览用真帧（M8.1b）。写限流、账号写入 412/429 暂停和字幕续取已实现。
+4. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
+5. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
+6. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。
@@ -299,7 +309,7 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 | ffmpeg | 放二进制，写 `config.json#ffmpegPath`（或 `FFMPEG_PATH`） | 画面降级故事板，`inspect` 精度 ±3s |
 | CA 证书 | `cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`） | Windows 上 ffmpeg 连 CDN 报证书失败，同样降级 |
 | B站登录 | 重新扫码（或复制 `credentials.json`，但新 IP 可能触发风控） | 字幕 0 条、稍后观看/收藏全部 `AUTH_REQUIRED` |
-| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主无法加载插件；本轮合并后应为 25 个工具 |
+| profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主无法加载插件；本轮合并后应为 27 个工具 |
 | 重启宿主 | 插件没有 HMR | 改动不生效，容易出现“脚本结论和宿主不一致” |
 
 平台差异（Windows）：`chmod 0600` 无效 → 用 icacls；`/tmp` 落到盘根 → 用 `os.tmpdir()`；

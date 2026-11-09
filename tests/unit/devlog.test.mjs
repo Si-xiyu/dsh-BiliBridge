@@ -135,3 +135,28 @@ test('devlog 覆盖 csrf_token/access_token 变体，且不误伤 face: smile �
     if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
   }
 });
+
+test('敏感工具不把私信正文写进 devlog 参数或结果预览', async () => {
+  const old = process.env.BILI_DATA_DIR;
+  const dir = await mkdtemp(join(tmpdir(), 'blb-dev6-'));
+  process.env.BILI_DATA_DIR = dir;
+  try {
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ dev: { enabled: true } }));
+    resetDevEnabledCache();
+    await recordToolCall({
+      tool: 'bilibili_messages',
+      args: { scope: 'thread', talkerId: '456', text: '私密正文', nested: { content: '也是私密' } },
+      result: { items: [{ text: '私密正文' }] },
+      sensitive: true,
+      ok: true,
+    });
+    const [item] = snapshotDevLog();
+    assert.equal(item.sensitive, true);
+    assert.equal(item.args.text, '[redacted-sensitive]');
+    assert.equal(item.args.nested.content, '[redacted-sensitive]');
+    assert.equal(item.resultPreview, '[redacted-sensitive]');
+    assert.equal(JSON.stringify(item).includes('私密正文'), false);
+  } finally {
+    if (old === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = old;
+  }
+});

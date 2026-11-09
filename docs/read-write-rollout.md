@@ -1,5 +1,19 @@
 # 基础读写扩展：P0 / P1
 
+## 2026-11-09 dev-op 增量
+
+工作分支：`dev-op`；worktree：`.agents/worktrees/dev-op`。在 auto-dev `49a2a61` 基础上增加：
+
+- `bilibili_messages`：私信会话/正文读取（只读、不标记已读、正文截断、图片只给 URL）。
+- `bilibili_dynamics` 扩展：`dynamicId` 详情、`includeImages`；`origin` 保留原动态正文/标题/bvid/图片/URL。
+- `bilibili_content_manage`：删除自己的评论/动态、定时草稿列表/删除/立即发布；preview/apply + 审批。
+- 发送失败透传平台原话与 `biliCode`；21047→`DM_RESTRICTED`（不可重试），21046/21020 带暂停时长；未知业务码也保留 `message/msg`。
+- 私信读取与发送标记为 sensitive，devlog 不落正文/结果预览。
+
+验证：`npm run test:single` **224/224**；27 个工具 schema **19,145 bytes**（测试上限 20,000）。私信读库层已用真实账号只读探测 `get_sessions`/`fetch_session_msgs` 通过。**未重启 DSH，未做宿主工具层验收，未做任何真实 apply。**
+
+以下为 2026-11-03 历史记录。
+
 日期：2026-11-03（Asia/Shanghai）。工作分支：`dev/codex`；worktree：`.worktree/codex`。本轮不包含视频投稿、投稿任务模型、独立分区工具或 Opus。初次交付 aa9abb8 时尚未 merge；随后与 auto-dev 集成，见下方记录。没有修改 desktop profile 或重启 DSH。
 
 ## 与 auto-dev 集成
@@ -8,7 +22,7 @@
 
 ## 工具预算
 
-保留原有 19 个工具及四个认证入口。新增 6 个，共 **25 个**；模型可见的名称、说明和参数 schema 序列化约 **16.3 KB**，不是 tokenizer 实测 token 数。测试约束工具数为 25、上述序列化体积小于 20 KB。
+保留原有 19 个工具及四个认证入口。新增 6 个，当时共 **25 个**（当前 27 个，见上）；模型可见的名称、说明和参数 schema 序列化约 **16.3 KB**，不是 tokenizer 实测 token 数。测试约束工具数为 25、上述序列化体积小于 20 KB。
 
 | 新工具 | 范围 |
 | --- | --- |

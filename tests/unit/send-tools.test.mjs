@@ -20,7 +20,13 @@ async function isolated(run) {
   globalThis.fetch = async (input, options) => {
     const url = new URL(input);
     let data;
-    if (options.method === 'POST') { posts.push({ url, options }); data = await mutation(url, options); }
+    if (options.method === 'POST') {
+      posts.push({ url, options });
+      const result = await mutation(url, options);
+      // 测试需要模拟业务错误时返回 { __response: {...} }，其余按成功 data 包一层。
+      if (result?.__response) return Response.json(result.__response);
+      data = result;
+    }
     else if (url.pathname.endsWith('/nav')) data = { isLogin: true, mid: 123 };
     else if (url.pathname.endsWith('/view')) data = { bvid, aid: 1, title: 'test', pages: [{ page: 1, cid: 2, duration: 10 }] };
     else if (url.pathname.endsWith('/reply')) data = { replies: [{ rpid_str: '9007199254740999', member: { mid: 123 }, content: { message: 'test text' }, parent_str: '11', ctime: Math.floor(Date.now() / 1000) }] };
@@ -62,6 +68,24 @@ test('message byte limit rejects before submission and no preview performs a POS
   assert.equal(posts.length, 0);
 }));
 
+test('21047 保留平台原话并标记不可重试；check 也能看到原因', async () => isolated(async ({ posts, onPost }) => {
+  const args = { jar, receiverMid: '5', text: 'hello' };
+  const preview = await messageSend(args);
+  onPost(() => ({ __response: { code: 21047, message: '对方主动回复或关注你前，最多发送1条消息~' } }));
+  const sent = await messageSend({ ...args, intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(sent.status, 'FAILED');
+  assert.equal(sent.error, 'DM_RESTRICTED');
+  assert.equal(sent.biliCode, 21047);
+  assert.match(sent.errorMessage, /最多发送1条消息/);
+  assert.match(sent.hint, /最多发送 1 条/);
+  assert.equal(sent.retryable, undefined);
+  const checked = await messageSend({ jar, intent: 'check', operationId: sent.operationId });
+  assert.equal(checked.status, 'FAILED');
+  assert.equal(checked.biliCode, 21047);
+  assert.match(checked.errorMessage, /最多发送1条消息/);
+  assert.equal(posts.length, 1);
+}));
+
 test('dynamic image change invalidates preview; multipart upload precedes JSON publication', async () => isolated(async ({ root, posts, onPost }) => {
   const image = join(root, 'image.png');
   const buffer = await sharp({ create: { width: 4, height: 4, channels: 3, background: 'red' } }).png().toBuffer();
@@ -84,16 +108,18 @@ test('dynamic image change invalidates preview; multipart upload precedes JSON p
   assert.equal(result.status, 'SENT'); assert.equal(posts.length, 2);
 }));
 
-test('all six mutations require apply approval; reconciliation is read-only and tool budget stays 25', async () => {
+test('all six mutations require apply approval; reconciliation is read-only and tool budget stays 27', async () => {
   const hooks = [], tools = [];
   apply({ on(name, fn) { if (name === 'tools/pre-execute') hooks.push(fn); }, tools: { register(tool) { tools.push(tool); } } });
-  assert.equal(tools.length, 25);
+  assert.equal(tools.length, 27);
   const gate = hooks[0];
   for (const name of ['bilibili_comment_send', 'bilibili_message_send', 'bilibili_dynamic_publish', 'bilibili_video_like_set', 'bilibili_favorite_set', 'bilibili_watch_later_set']) {
     assert.equal(await gate({ name, args: {} }, () => 'next'), 'next');
     assert.equal((await gate({ name, args: { intent: 'apply', text: 'visible text' } }, () => 'next')).kind, 'ask');
   }
   assert.equal(await gate({ name: 'bilibili_comment_send', args: { intent: 'check' } }, () => 'next'), 'next');
+  assert.equal((await gate({ name: 'bilibili_content_manage', args: { action: 'delete_comment', intent: 'apply' } }, () => 'next')).kind, 'ask');
+  assert.equal(await gate({ name: 'bilibili_content_manage', args: { action: 'list_drafts' } }, () => 'next'), 'next');
   const bytes = Buffer.byteLength(JSON.stringify(tools.map(({ name, description, parameters }) => ({ name, description, parameters }))));
   assert.ok(bytes < 20000, `schema budget exceeded: ${bytes}`);
 });
