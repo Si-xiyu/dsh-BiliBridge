@@ -92,7 +92,7 @@ node bin/bili.mjs latest      # 我最新投稿 + 播放量
 
 npm run test:single           # 单进程跑单测（受限沙箱里 npm test 的子进程会 EPERM）
 node tests/manual-op-e2e.mjs            # 写操作 dry-run（只读 + preview）
-node tests/manual-op-e2e.mjs --apply    # 真实写入，逐项回读并清理；私信会留下一条测试消息
+node tests/manual-op-e2e.mjs --apply    # 真实写入，逐项回读并清理；私信需再传 --dm-mid=<测试账号>
 node tests/manual-evidence.mjs BV1YLHu6zEDp
 node tests/manual-read.mjs search "编程" --type video
 node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot

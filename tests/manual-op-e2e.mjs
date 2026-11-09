@@ -44,7 +44,8 @@ const arg = (name, fallback) => {
 const WATCH_BVID = arg('watch-bvid', 'BV1GJ411x7h7');
 const FAV_FOLDER = arg('folder', '3936040233');
 const COMMENT_BVID = arg('comment-bvid', 'BV1KDNA6eEgr');
-const DM_MID = arg('dm-mid', '260118260');
+// 不内置任何真实用户 mid：私信只发给显式 --dm-mid 指定的测试账号。
+const DM_MID = arg('dm-mid', '');
 const COMMENT_TEXT = 'BiliBridge 端到端验收测试评论，稍后删除。';
 const DYNAMIC_TEXT = 'BiliBridge 端到端验收测试动态，稍后删除。';
 const DM_TEXT = 'BiliBridge 私信读写验收测试，请忽略。';
@@ -185,7 +186,9 @@ async function main() {
   }
 
   // ── 私信（单条） ─────────────────────────────────────────
-  if (apply) {
+  if (!DM_MID) {
+    track('message.skip', { reason: '需要显式 --dm-mid=<测试账号> 才执行私信验收' });
+  } else if (apply) {
     const preview = await messageSend({ jar, receiverMid: DM_MID, text: DM_TEXT });
     const sent = await messageSend({ jar, receiverMid: DM_MID, text: DM_TEXT, intent: 'apply', previewToken: preview.previewToken });
     track('message.send', { status: sent.status, ...(sent.error ? shortError(sent) : {}), operationId: sent.operationId });
