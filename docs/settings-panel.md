@@ -1,6 +1,6 @@
 # 设置面板（自定义 settings.section）设计
 
-> 状态：**设计稿，未实现**。目标是在 DSH 设置面板里给本插件加一页「B站工具」，
+> 状态：前文保留历史设计与调研；设置页已实现，最新节能模式实现见第 13 节。原设计目标是在 DSH 设置面板里给本插件加一页「B站工具」，
 > 用来查看账号/运行时/预算/缓存，并编辑插件配置。
 > 依据：`dsh-bili-whale` 与 `dshmarket` 的线上产物（见文末参考），非猜测。
 
@@ -392,3 +392,36 @@ registerSettingsRoutes(ctx);
 - CSS：只用宿主变量 `--dsw-alias-label-primary` / `-border-l2` / `-label-tertiary` / `-brand-primary` / `-label-primary-foreground`。
 - 扫码登录：`POST /auth/qr/start` → 轮询 `POST /auth/qr/poll {id}` → `POST /auth/qr/cancel`，成功后用返回的 account 刷新页面状态。
 - 主按钮文字色要用 `--dsw-alias-label-primary-foreground`（深色主题下 `brand-primary` 近白，写死 `#fff` 会白底白字）。
+
+## 13. 节能模式（2026-11-10 实现）
+
+入口：DSH 账户菜单 → 设置 →「BiliBridge」→「视频取数（节能模式）」。settings-merge / settings-api 支持以下字段读写与 reset，analysisConfig() / extractConfig() 提供读取。
+
+| 字段 | 类型 | 默认值 | 作用 |
+| --- | --- | --- | --- |
+| `extract.subtitles` | 布尔 | true | extract / collect 平台字幕 |
+| `extract.comments` | 布尔 | true | extract / collect 评论 |
+| `extract.danmaku` | 布尔 | true | Stage 1 弹幕 |
+| `extract.frames` | 布尔 | true | Stage 1 画面（封面、Uniform 与 Adaptive 九宫格） |
+| `adaptive.adaptiveEnabled` | 布尔 | true | Stage 1 自动补充 Adaptive 九宫格 |
+
+### 13.1 预设定义
+
+| 预设 | subtitles | comments | danmaku | frames | adaptiveEnabled |
+| --- | --- | --- | --- | --- | --- |
+| 节能（仅字幕） | true | false | false | false | false |
+| 标准（全量） | true | true | true | true | true |
+
+总结视频推荐「节能（仅字幕）」。预设只修改这五项，不修改预算、ASR/OCR 等其他配置；reset 恢复这五项默认全开值。「仅字幕」不保证存在平台字幕，也不会自动运行 ASR。
+
+### 13.2 优先级、作用范围与边界
+
+- extract 设置是 `bilibili_extract` / `bilibili_collect` 的默认取数上限。collect 在已有评论、字幕采集范围内遵守对应设置，不因此新增画面或弹幕采集。
+- 有效来源为设置开启 **AND** 调用方未用 `include=false` 关闭；`include=true` 不能越过设置。全开也不强制每次取全量，字幕续取等既有规则仍适用。
+- 主动关闭的来源在 sources 中为 `status='skipped'`，标记 `skippedBy='settings'` 或 `'caller'`；两者都关闭时设置原因优先。主动跳过不误报缺失 gaps，`bundle.danmaku.status` / `bundle.comments.status` 与 sources 一致。
+- `subtitleCursor` / `danmakuWindow` 与对应字幕或弹幕来源被设置或 include 关闭冲突时，返回 `INVALID_ARGUMENT`，不会重新启用来源。
+- `extract.frames=false` 关闭 Stage 1 画面，即使 adaptive 开启也不能恢复；frames 开启、adaptive 关闭时仍可取封面与 Uniform 九宫格。adaptive 开关只影响 Stage 1 自动补充九宫格。
+- 显式 `bilibili_comments`、`bilibili_inspect`、`bilibili_transcribe` 不受这五项限制，包括 inspect 的显式自适应选帧；仍遵守各自预算及 ASR/OCR 硬禁用设置。
+- **设置保存后下一次调用生效；代码更新需重启 DSH。**
+
+自动测试：`npm.cmd run test:single` 250/250；不代表真实 B 站取数或 DSH 宿主设置页验收完成。

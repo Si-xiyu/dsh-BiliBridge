@@ -1,5 +1,21 @@
 # 能力矩阵与只读验收
 
+## 当前补充：2026-11-10 eco-mode 视频取数节能模式
+
+工具仍为 **27 个**，schema 低于 20,000 bytes；当前自动测试 `npm.cmd run test:single` **250/250**。本节记录配置行为与自动测试，以下历史轮次保留当时验证结果，不新增真实 B 站或 DSH 宿主验收结论。
+
+| 新配置 / 返回字段 | 已实现行为与边界 |
+| --- | --- |
+| `extract.{subtitles,comments,danmaku,frames}` | 四项布尔值默认全 true；约束 extract 对应来源，collect 在已有评论、字幕采集范围内遵守设置，不新增画面或弹幕采集 |
+| `adaptive.adaptiveEnabled` | 布尔值默认 true；只影响 Stage 1 自动补充九宫格；不能越过 frames 关闭，frames 开启且 adaptive 关闭仍可取封面与 Uniform |
+| settings 与 `include` | AND 关系；设置为默认取数上限，include 只能进一步关闭，不能重新开启 |
+| `sources.status` / `skippedBy` | 主动关闭为 skipped，原因标记 settings 或 caller；设置关闭优先，不误报缺失 gaps |
+| `bundle.danmaku.status` / `bundle.comments.status` | 与 sources 状态一致，关闭时为 skipped |
+| `subtitleCursor` / `danmakuWindow` | 对应来源被设置或 include 关闭时，冲突返回 INVALID_ARGUMENT |
+| 显式工具 | bilibili_comments / bilibili_inspect / bilibili_transcribe 不受这五项限制，包括 inspect 显式自适应选帧；原有预算及 ASR/OCR 设置仍适用 |
+
+设置页提供「节能（仅字幕）」和「标准（全量）」预设，定义见 [设置面板第 13 节](settings-panel.md#13-节能模式2026-11-10-实现)。**设置保存后下一次调用生效；代码更新需重启 DSH。** 本轮未执行真实取数或宿主重启验收。
+
 ## 当前补充：2026-11-09/10 dev-op 读写补全
 
 当前代码为 **27 个工具**，保持四个 auth 入口和单一 extract 平台文本入口。新增能力通过 235/235 离线测试；2026-11-10 已用真实账号完成库层写 E2E（稍后观看、收藏、评论、图文动态、私信），但**尚未重启宿主做工具层/审批路径验收**。
