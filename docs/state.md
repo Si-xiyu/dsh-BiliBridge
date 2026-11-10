@@ -69,8 +69,8 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
   - `intent=apply`：真写后回读校验（3 次退避轮询，容忍最终一致性）；结果不明时先回读和解，不盲目重试；收藏夹必须显式 `mediaId`
   - 实测（BV1KDNA6eEgr）：点赞 → verified → 取消 → verified → 状态还原；期间发现并修掉两个真 bug：取消点赞参数应为 `like=2`（0 会被拒）、写完立刻回读会读到旧值
 - 视频理解（Fast Path / Deep Path，2026-11-02 定稿）：
-  - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 封面 / 故事板九宫格
-    （跨全部雪碧图，覆盖整条时间轴）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
+  - `bilibili_extract`（Stage 1，秒级）：元信息 / 平台字幕 / 弹幕 / 评论 / 故事板九宫格
+    （跨全部雪碧图，覆盖整条时间轴；**左上第一格是封面**，不再单独发图）+ `gaps[]` / `suggestedWindows[]` / `evidenceLevel`。
     **不跑 ASR、不跑 OCR**；没有平台字幕就 `subtitles.status="empty"`。
   - `bilibili_inspect`（Stage 2）：定点取真实帧，ffmpeg 优先（误差约一帧，不给毫秒上界），
     失败自动降级故事板（多雪碧图定位，如实报 `maxErrorMs`）；多帧按**每张最多 6 格（2×3）**均分拆图
