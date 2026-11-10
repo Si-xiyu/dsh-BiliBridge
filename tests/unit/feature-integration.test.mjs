@@ -6,8 +6,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { registerExtractTools } from '../../lib/tools/extract.mjs';
-import { registerSettingsRoutes } from '../../lib/settings-api.mjs';
-import { clearImages, listImages } from '../../lib/imagelog.mjs';
 import { createTrafficGuard, trafficGuard } from '../../lib/bili/traffic-guard.mjs';
 import { collect } from '../../lib/bili/collect.mjs';
 import { CookieJar, request } from '../../lib/bili/http.mjs';
@@ -19,7 +17,6 @@ async function fixture(t, handler) {
   const root = await mkdtemp(join(tmpdir(), 'bili-integrated-'));
   const previous = process.env.BILI_DATA_DIR;
   process.env.BILI_DATA_DIR = root;
-  clearImages();
   let clock = 1000000;
   const guard = createTrafficGuard({ root, now: () => clock, sleep: async ms => { clock += ms; } });
   t.mock.method(trafficGuard, 'run', guard.run);
@@ -30,26 +27,12 @@ async function fixture(t, handler) {
     return handler(url);
   });
   t.after(async () => {
-    clearImages();
     if (previous === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = previous;
     await rm(root, { recursive: true, force: true });
   });
   return { root, calls, guard, settings: value => writeFile(join(root, 'config.json'), JSON.stringify(value)) };
 }
-function routes() {
-  const map = new Map();
-  registerSettingsRoutes({ inject(_names, fn) { fn({ webServer: { register(route) { map.set(route.path.split('/api/')[1], route.handler); return () => {}; } } }); } });
-  return map;
-}
-async function localGet(handler, url) {
-  let status, body;
-  await handler({ method: 'GET', url, headers: { host: '127.0.0.1:1983', 'sec-fetch-site': 'same-origin' }, socket: { remoteAddress: '127.0.0.1' } }, {
-    writeHead(code) { status = code; }, end(value) { body = value; },
-  });
-  return { status, body };
-}
-
-test('eco extract skips images; enabling uniform frames registers readable thumbnails under the real traffic guard', async t => {
+test('eco extract skips images; enabling frames extracts the storyboard under the real traffic guard', async t => {
   const jpeg = await sharp({ create: { width: 480, height: 270, channels: 3, background: '#448866' } }).jpeg().toBuffer();
   const f = await fixture(t, url => {
     if (url.pathname.endsWith('/view')) return Response.json({ code: 0, data: metadata });
@@ -64,24 +47,14 @@ test('eco extract skips images; enabling uniform frames registers readable thumb
   const exec = { agent: { session: { id: 'integration-session' } } };
   await f.settings({ extract: { subtitles: false, comments: false, danmaku: false, frames: false }, adaptive: { adaptiveEnabled: false } });
   const eco = await extract.execute({ bvid, include: { frames: true } }, exec);
-  assert.deepEqual(eco.images, []); assert.deepEqual(listImages(), []);
+  assert.deepEqual(eco.images, []);
   assert.deepEqual(f.calls, ['/x/web-interface/view']);
   await f.settings({ extract: { subtitles: false, comments: false, danmaku: false, frames: true }, adaptive: { adaptiveEnabled: false } });
   const normal = await extract.execute({ bvid }, exec);
   assert.equal(normal.status, 'ok'); assert.equal(normal.images.length, 1);
-  const registered = listImages();
-  assert.equal(registered.length, 1); assert.equal(registered[0].path, normal.images[0].path);
-  assert.equal(registered[0].sessionId, 'integration-session');
   assert.equal((await f.guard.status()).remaining.readDaily, 2997, 'metadata + metadata + videoshot; local/media images consume no API allowance');
-  const map = routes();
-  const listed = await localGet(map.get('images'), '/bilibili-bridge/api/images');
-  assert.equal(listed.status, 200); assert.equal(JSON.parse(listed.body).items.length, 1);
-  const imageUrl = `/bilibili-bridge/api/image?bvid=${bvid}&name=${encodeURIComponent(registered[0].name)}`;
-  const image = await localGet(map.get('image'), imageUrl);
-  assert.equal(image.status, 200); assert.ok((await sharp(image.body).metadata()).width > 0);
   await assert.rejects(request('https://api.bilibili.com/x/risk'), { code: 'RISK_CONTROLLED' });
   const before = f.calls.length;
-  assert.equal((await localGet(map.get('image'), imageUrl)).status, 200, 'platform pause must not block already-generated local images');
   await assert.rejects(extract.execute({ bvid }, exec), { code: 'TRAFFIC_PAUSED' });
   assert.equal(f.calls.length, before);
 });

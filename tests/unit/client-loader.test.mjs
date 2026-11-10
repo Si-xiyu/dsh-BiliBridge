@@ -31,31 +31,6 @@ async function loadClient() {
   return captured;
 }
 
-test('ImageStrip loads thumbnails, renders links and cancels polling when unmounted', async t => {
-  const descriptor = await loadClient();
-  let items = [];
-  const effects = [], timers = new Map();
-  let nextTimer = 0;
-  t.mock.method(globalThis, 'setTimeout', fn => { timers.set(++nextTimer, fn); return nextTimer; });
-  t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
-  t.mock.method(globalThis, 'fetch', async url => {
-    assert.equal(url, '/bilibili-bridge/api/images?limit=12');
-    return Response.json({ ok: true, items: [{ bvid: 'BV1GJ411x7h7', name: 'storyboard.jpg', kind: 'storyboard', path: '/fixture/storyboard.jpg' }] });
-  });
-  const exports = descriptor.factory(() => ({ ...fakeReact(), useState: () => [items, value => { items = value; }], useEffect: effect => effects.push(effect) }));
-  assert.equal(exports.ImageStrip(), null);
-  const cleanup = effects.map(effect => effect()).filter(fn => typeof fn === 'function');
-  await new Promise(resolve => setImmediate(resolve));
-  const strip = exports.ImageStrip();
-  assert.equal(strip.props.className, 'blb-image-strip');
-  const link = strip.children.flat()[0];
-  assert.match(link.props.href, /\/image\?bvid=BV1GJ411x7h7&name=storyboard.jpg$/);
-  assert.equal(link.children[0].type, 'img');
-  assert.equal(timers.size, 1);
-  cleanup.forEach(fn => fn());
-  assert.equal(timers.size, 0);
-});
-
 test('client bundle 用稳定的 id 与手写 factory 注册', async () => {
   const descriptor = await loadClient();
   assert.equal(descriptor.id, 'dsh-bilibili-bridge');
@@ -273,7 +248,7 @@ test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
     inject() {},
   };
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 
 test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
@@ -286,7 +261,7 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   };
   Object.defineProperty(ctx, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 
 test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pending）', async () => {
@@ -299,7 +274,7 @@ test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pen
   };
   const returned = exports.apply(ctx);
   assert.equal(returned, undefined);
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
   const exports = await loadExports();
@@ -319,9 +294,6 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
   assert.ok(exports.DevIcon({ size: 16 }));
   assert.equal(typeof exports.DevTab, 'function');
   assert.ok(exports.DevTab({}));
-  // 缩略图条在还没有图片时返回 null（single 槽不占版面），但不能抛错。
-  assert.equal(typeof exports.ImageStrip, 'function');
-  assert.equal(exports.ImageStrip({}), null);
 });
 test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
   const descriptor = await loadClient();
@@ -336,5 +308,5 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   // 模拟 cordis 未注入服务时的 getter 抛错（真实崩溃就是这么发生的）
   Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(hostile));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
 });
