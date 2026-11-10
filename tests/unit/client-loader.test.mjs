@@ -31,6 +31,31 @@ async function loadClient() {
   return captured;
 }
 
+test('ImageStrip loads thumbnails, renders links and cancels polling when unmounted', async t => {
+  const descriptor = await loadClient();
+  let items = [];
+  const effects = [], timers = new Map();
+  let nextTimer = 0;
+  t.mock.method(globalThis, 'setTimeout', fn => { timers.set(++nextTimer, fn); return nextTimer; });
+  t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url, '/bilibili-bridge/api/images?limit=12');
+    return Response.json({ ok: true, items: [{ bvid: 'BV1GJ411x7h7', name: 'storyboard.jpg', kind: 'storyboard', path: '/fixture/storyboard.jpg' }] });
+  });
+  const exports = descriptor.factory(() => ({ ...fakeReact(), useState: () => [items, value => { items = value; }], useEffect: effect => effects.push(effect) }));
+  assert.equal(exports.ImageStrip(), null);
+  const cleanup = effects.map(effect => effect()).filter(fn => typeof fn === 'function');
+  await new Promise(resolve => setImmediate(resolve));
+  const strip = exports.ImageStrip();
+  assert.equal(strip.props.className, 'blb-image-strip');
+  const link = strip.children.flat()[0];
+  assert.match(link.props.href, /\/image\?bvid=BV1GJ411x7h7&name=storyboard.jpg$/);
+  assert.equal(link.children[0].type, 'img');
+  assert.equal(timers.size, 1);
+  cleanup.forEach(fn => fn());
+  assert.equal(timers.size, 0);
+});
+
 test('client bundle 用稳定的 id 与手写 factory 注册', async () => {
   const descriptor = await loadClient();
   assert.equal(descriptor.id, 'dsh-bilibili-bridge');
