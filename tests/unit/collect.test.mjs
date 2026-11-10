@@ -47,3 +47,38 @@ test('collect enforces aggregate output budget and lists unprocessed candidates'
     assert.ok(Buffer.byteLength(JSON.stringify(result.results)) <= 512000);
   });
 });
+
+test('collect stops immediately on risk or expired login, retaining the incomplete current video', async () => {
+  for (const code of [-352, -412, -101]) {
+    let callsAfterFailure = 0, failed = false;
+    await network(url => {
+      if (failed) callsAfterFailure++;
+      if (url.pathname.endsWith('/search/type')) return { result: candidates, numResults: 3 };
+      if (url.pathname.endsWith('/view')) return { bvid: candidates[0].bvid, aid: 1, pages: [] };
+      if (url.pathname === '/x/v2/reply') { failed = true; return Response.json({ code }); }
+      throw Error('unexpected request ' + url.pathname);
+    }, async () => {
+      const result = await collect({ keyword: 'test', maxVideos: 3, jar });
+      assert.equal(callsAfterFailure, 0);
+      assert.equal(result.stopped, code === -352 ? 'RISK_CONTROLLED' : code === -412 ? 'RATE_LIMITED' : 'AUTH_REQUIRED');
+      assert.equal(result.results.length, 1);
+      assert.deepEqual(result.incomplete, [candidates[0].bvid]);
+      assert.deepEqual(result.unprocessed, candidates.slice(1).map(v => v.bvid));
+    });
+  }
+});
+
+test('collect continues after ordinary per-video content errors', async () => {
+  let replies = 0;
+  await network(url => {
+    if (url.pathname.endsWith('/search/type')) return { result: candidates, numResults: 3 };
+    if (url.pathname.endsWith('/view')) return { bvid: candidates[0].bvid, aid: 1, pages: [] };
+    if (url.pathname === '/x/v2/reply') { replies++; return Response.json({ code: -404 }); }
+    throw Error('unexpected request');
+  }, async () => {
+    const result = await collect({ keyword: 'test', maxVideos: 3, subtitles: false, jar });
+    assert.equal(replies, 3);
+    assert.equal(result.stopped, null);
+    assert.equal(result.results.length, 3);
+  });
+});
