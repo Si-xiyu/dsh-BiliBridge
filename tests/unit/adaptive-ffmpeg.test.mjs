@@ -1,3 +1,4 @@
+import '../helpers/http-isolation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, stat, rm } from 'node:fs/promises';

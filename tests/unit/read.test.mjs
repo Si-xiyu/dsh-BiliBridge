@@ -1,3 +1,4 @@
+import '../helpers/http-isolation.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { apply } from '../../lib/index.js';

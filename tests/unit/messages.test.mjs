@@ -1,3 +1,4 @@
+import '../helpers/http-isolation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CookieJar } from '../../lib/bili/http.mjs';

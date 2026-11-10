@@ -1,3 +1,4 @@
+import '../helpers/http-isolation.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { guardedWrite, validateWrite, writeDecision } from '../../lib/bili/write-guard.mjs';

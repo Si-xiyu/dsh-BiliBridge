@@ -1,3 +1,4 @@
+import '../helpers/http-isolation.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { attachRemoteImages } from '../../lib/tools/images.mjs';

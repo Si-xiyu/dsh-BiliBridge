@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -162,4 +162,28 @@ test('cancellation while waiting for another process lock is prompt and does not
   const started = Date.now();
   await assert.rejects(f.guard.run({ ...options, signal: controller.signal }, async () => { throw Error('must not run'); }), e => e.submission === 'not-submitted');
   assert.ok(Date.now() - started < 1000);
+});
+
+test('process exit after durable admission leaves an interruption barrier until explicit acknowledgement', async t => {
+  const f = await fixture(t);
+  const worker = fileURLToPath(new URL('../helpers/traffic-worker.mjs', import.meta.url));
+  await assert.rejects(promisify(execFile)(process.execPath, [worker, f.root, 'crash'], { windowsHide: true }), e => e.code === 23);
+  const old = new Date(Date.now() - 181000);
+  await utimes(join(f.root, 'traffic-state.json.lock'), old, old);
+  await assert.rejects(f.guard.run(options, async () => { throw Error('must not run'); }), e => e.code === 'TRAFFIC_MANUAL_REQUIRED' && e.data.reason === 'interrupted-request');
+  const before = await f.guard.status();
+  assert.ok(before.interrupted);
+  await f.guard.resume();
+  const after = await f.guard.status();
+  assert.equal(after.interrupted, null);
+  assert.deepEqual(before.remaining, after.remaining);
+});
+
+test('spent normal read quota does not strand login recovery; recovery itself remains bounded', async t => {
+  const f = await fixture(t, { readHourly: 1 });
+  await f.guard.run(options, async () => result());
+  await assert.rejects(f.guard.run(options, async () => result()), { code: 'TRAFFIC_BUDGET_EXCEEDED' });
+  const nav = { ...options, url: 'https://api.bilibili.com/x/web-interface/nav' };
+  await f.guard.run(nav, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
+  await assert.rejects(f.guard.run(nav, async () => result()), e => e.code === 'TRAFFIC_BUDGET_EXCEEDED' && e.data.scope === 'login-recovery');
 });
