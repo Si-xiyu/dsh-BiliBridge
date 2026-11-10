@@ -5,7 +5,13 @@
 
 更新时间：2026-11-10（Asia/Shanghai）
 
-最新：`feat/risk-control` 已在独立 worktree 完成统一请求保护、逐阶段 review/test 和修正，最终自动测试 **260/260** 通过。API 读取与账号写入共享持久化间隔、额度和平台暂停；collect 遇到风控立即停止；新增离线 `traffic status` 和人工确认恢复。详见 [风控保护交付总结](risk-control-summary.md)。本分支未合并 main、未重启宿主、未调用真实账号；测试通过不代表平台不会风控。
+最新：eco-mode、image-strip、risk-control 已合并并完成联合 review/test。单进程与默认进程隔离测试均 **283/283** 通过，27 个工具及原审批规则保留；本地 auto-dev 与 main 以该验收结果快进。详见 [三分支合并与联合验收报告](integration-review.md)。没有重启 DSH 或新增真实账号操作，宿主显示/审批验收仍待执行。
+
+图片条保留当前进程最近图片，节能模式关闭画面不会产生新登记；风控暂停阻止新的上游请求，但不会阻止已有本地图片读取。Review 额外修复了 cache/BV 父目录 junction 读取边界。
+
+以下为各功能分支合入前的交付记录，保留当时测试数量与分支状态；当前集成状态以上文为准。
+
+风控分支交付时：`feat/risk-control` 在独立 worktree 完成统一请求保护、逐阶段 review/test 和修正，自动测试 **260/260** 通过。API 读取与账号写入共享持久化间隔、额度和平台暂停；collect 遇到风控立即停止；新增离线 `traffic status` 和人工确认恢复。详见 [风控保护交付总结](risk-control-summary.md)。当时未合并 main、未重启宿主、未调用真实账号；当前合并状态以上文为准，测试通过不代表平台不会风控。
 
 既有能力：Stage 1 默认 Uniform + Adaptive 双九宫格；inspect 支持全片／区间自适应选帧，复用 maxFrames 和最多 2×3 拼图，见 [adaptive-frames.md](adaptive-frames.md)。保留 27 个工具、设置页 P3、开发者模式、十条设置路由及动态图片/原动态索引；审批策略未改。dev-op 读写补全与真实库层 E2E 记录如下，新增宿主工具/审批路径仍待验收。以下较早的环境、测试数量和真实验收记录保留历史日期，不代表本轮风控保护已经完成真实账号或宿主验收。
 

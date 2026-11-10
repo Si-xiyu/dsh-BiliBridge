@@ -1,5 +1,7 @@
 # BiliBridge 请求风控保护交付总结
 
+> 本文保留风控分支独立交付时的记录。后续已与节能模式、图片条联合验收，当前合并和测试结果见 [三分支集成报告](integration-review.md)。文中的未合并状态及 260 项测试只描述原交付阶段。
+
 日期：2026-11-10（Asia/Shanghai）。基线为本地 `main` 的 `9e9bafd`，所有改动在 `feat/risk-control` 的独立 worktree 完成。
 
 ## 这次解决了什么
