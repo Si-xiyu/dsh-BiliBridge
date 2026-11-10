@@ -11,7 +11,7 @@
 - 私信读取与发送标记为 sensitive，devlog 不落正文/结果预览。
 - Codex review 修复：`publish_draft_now` 的 token 绑定草稿 `requestHash`；`delete_comment` 预览先校验评论作者属于当前账号；`delete_dynamic` apply 不再把 4101152 当“已删除”，直接按绑定 id 尝试删除、只认 500404；附件能力不可用时跳过图片下载。
 
-验证：`npm run test:single` **235/235**；27 个工具 schema **19,187 bytes**（测试上限 20,000）。私信读库层已用真实账号只读探测 `get_sessions`/`fetch_session_msgs` 通过。**未重启 DSH，宿主工具层/审批路径未验收。**
+验证：`npm run test:single` **235/235**；27 个工具 schema **19,187 bytes**（测试上限 20,000）。私信读库层已用真实账号只读探测 `get_sessions`/`fetch_session_msgs` 通过。宿主已加载 27 工具；`bilibili_messages` 与 `bilibili_dynamics(dynamicId)` 已真实调用成功，`tools/pre-execute` 审批路径仍待验证。
 
 2026-11-10 真实库层 E2E（账号 四夕羽_，脚本 `tests/manual-op-e2e.mjs --apply`，每项写完回读并清理）：
 
@@ -22,6 +22,7 @@
 | 评论 `BV1KDNA6eEgr` | SENT rpid 323485773824 → 删除，列表不存在 |
 | 图文动态 | SENT id 1268744613532794883（1 图）→ detail 回读 → 删除，feed 不含；删除后详情 4101152 已映射 NOT_FOUND |
 | 私信 260118260 | SENT → `bilibili_messages` 读回 found；同文再发 DUPLICATE；不重发 |
+| 定时草稿 | 列表真实端点为 `dynamic_draft/get_drafts`（空列表通过）；`add_draft` 真实返回 4120015，定时创建未验收 |
 | 21047 | 该会话对方曾回复，未真实触发；仍由模拟复现与历史真实报错覆盖 |
 | 未清理 | 私信测试消息保留一条；评论/动态/收藏/稍后观看均已恢复 |
 

@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | messages | api.vc get_sessions / fetch_session_msgs | 真实账号只读探测通过；E2E 用它读回私信；工具层待宿主重启 |
 | dynamics 详情/原动态 | /x/polymer/web-dynamic/v1/detail；origin 保留原动态 text/title/bvid/pics/url | 真实发布后 detail 回读成功；图片附件（工具层）未验收；删除后 4101152 已映射 NOT_FOUND |
-| content_manage | /x/v2/reply/del、api.vc rm_dynamic、dynamic_draft list/rm_draft/publish_now | 真实删除评论/动态成功并回读；定时草稿仍为模拟 |
+| content_manage | /x/v2/reply/del、api.vc rm_dynamic、dynamic_draft get_drafts/rm_draft/publish_now | 真实删除评论/动态成功并回读；草稿列表改为 get_drafts（空列表真实通过）；add_draft 真实返回 4120015，定时创建未验收 |
 | 写 E2E | 稍后观看、收藏、评论、图文动态、私信 | 真实账号：add/remove verified；评论 SENT→删除；动态 SENT→删除；私信 SENT→读回；同文再发 DUPLICATE |
 | 写错误透传 | sendOnce/check 保留 errorMessage/biliCode/biliMessage/hint；21047→DM_RESTRICTED | 21047 模拟复现通过；本会话对方曾回复，真实 21047 未触发 |
 | messages 隐私 | 工具标记 sensitive；devlog 不落正文与结果预览 | 单测通过 |
@@ -27,7 +27,7 @@
 | collect | 搜索 + 评论 + 字幕，复用既有客户端 | 单视频真实成功；取消与 512 KB 预算为模拟验证 |
 | comment_send | /x/v2/reply/add；check 回读 reply 或 reply/reply | implemented；预览绑定、审批、判重和超时核对模拟通过，未真实发送 |
 | message_send | api.vc /web_im/v1/web_im/send_msg；check fetch_session_msgs | implemented；预览与字节限制模拟通过，未真实发送 |
-| dynamic_publish | draw/upload_bfs → feed/create/dyn；定时使用 api.vc add_draft | implemented；multipart、JSON、图片变化和定时草稿模拟通过，未真实上传/发布 |
+| dynamic_publish | draw/upload_bfs → feed/create/dyn；定时使用 api.vc add_draft | 立即图文发布真实成功；multipart、JSON、图片变化模拟通过；add_draft 真实返回 4120015，定时创建未验收 |
 | favorite_set / watch_later_set | 既有写接口 + guardedWrite 回读 | 已授权目标分别 false→true→false，四次 verified，最终恢复 |
 | 统一写保护 | 私有 JSONL、账号限流 JSON、previewToken | 并发与子进程判重、未决保护、跨工具暂停模拟通过 |
 

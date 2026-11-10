@@ -54,7 +54,7 @@ Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node 
 | `bilibili_messages` | 私信会话列表与正文读取（只读、不标记已读，正文截断） |
 | `bilibili_comment_send` | 发表评论或回复 |
 | `bilibili_message_send` | 文字私信 |
-| `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时动态 |
+| `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时草稿（定时创建未验收，当前返回 4120015） |
 | `bilibili_content_manage` | 删除自己的评论/动态、列出/删除/立即发布定时草稿 |
 | `bilibili_collect` | 有上限的搜索后批量评论、字幕采集 |
 
