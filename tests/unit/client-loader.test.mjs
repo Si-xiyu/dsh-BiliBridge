@@ -172,7 +172,7 @@ test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
     inject() {},
   };
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
 });
 
 test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
@@ -185,7 +185,7 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   };
   Object.defineProperty(ctx, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
 });
 
 test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pending）', async () => {
@@ -198,7 +198,7 @@ test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pen
   };
   const returned = exports.apply(ctx);
   assert.equal(returned, undefined);
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
   const exports = await loadExports();
@@ -218,6 +218,9 @@ test('所有导出的组件都能渲染（防止删掉中间组件导致整页�
   assert.ok(exports.DevIcon({ size: 16 }));
   assert.equal(typeof exports.DevTab, 'function');
   assert.ok(exports.DevTab({}));
+  // 缩略图条在还没有图片时返回 null（single 槽不占版面），但不能抛错。
+  assert.equal(typeof exports.ImageStrip, 'function');
+  assert.equal(exports.ImageStrip({}), null);
 });
 test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
   const descriptor = await loadClient();
@@ -232,5 +235,5 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   // 模拟 cordis 未注入服务时的 getter 抛错（真实崩溃就是这么发生的）
   Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(hostile));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'shell.bottom']);
 });
