@@ -82,3 +82,28 @@ test('图片字节路由：只读登记过的文件，拒绝越界/保留名/符
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('图片字节路由：拒绝通过 cache 或 BV 目录 junction 读取已登记文件', async () => {
+  const previous = process.env.BILI_DATA_DIR;
+  const root = await mkdtemp(join(tmpdir(), 'bili-image-junction-'));
+  try {
+    for (const atCache of [true, false]) {
+      const data = join(root, atCache ? 'cache-link' : 'bv-link');
+      const outside = join(root, atCache ? 'outside-cache' : 'outside-bv');
+      await mkdir(data, { recursive: true });
+      await mkdir(atCache ? join(outside, bvid) : outside, { recursive: true });
+      await writeFile(join(atCache ? join(outside, bvid) : outside, 'test.jpg'), Buffer.from('private-image'));
+      const link = atCache ? join(data, 'cache') : join(data, 'cache', bvid);
+      if (!atCache) await mkdir(join(data, 'cache'));
+      await symlink(outside, link, 'junction');
+      process.env.BILI_DATA_DIR = data;
+      const target = join(data, 'cache', bvid, 'test.jpg');
+      const map = routes({ listImages: () => [{ path: target, bvid, name: 'test.jpg' }] });
+      const result = await raw(map.get('image'), { url: `/bilibili-bridge/api/image?bvid=${bvid}&name=test.jpg` });
+      assert.equal(result.code, 404, atCache ? 'cache junction' : 'BV junction');
+    }
+  } finally {
+    if (previous === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
