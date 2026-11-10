@@ -76,10 +76,86 @@ test('apply 把 section 注册到 settings.section，标签名是「BiliBridge�
 test('客户端源码保留中文文案（防止再次被写成问号占位）', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../../lib/client.js', import.meta.url), 'utf8');
-  for (const word of ['BiliBridge', '账号', '运行时', '预算', '缓存', '刷新']) {
+  for (const word of ['BiliBridge', '账号', '运行时', '预算', '缓存', '刷新',
+    '视频取数（节能模式）', '获取平台字幕', '获取评论', '获取弹幕',
+    '获取画面（封面/故事板）', 'Adaptive 补充九宫格', '节能（仅字幕）', '标准（全量）']) {
     assert.ok(source.includes(word), `client.js 缺少中文文案：${word}`);
   }
   assert.ok(!/[?？]{3,}/.test(source), 'client.js 不应该出现连续问号占位');
+});
+
+test('设置页：取数开关默认开启，预设清理自动保存并携带 revision 提交', async (t) => {
+  const descriptor = await loadClient();
+  const states = [], refs = [], effects = [], requests = [], timers = new Map();
+  let cursor = 0, refCursor = 0, timerId = 0, respond;
+  const react = {
+    ...fakeReact(),
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = initial;
+      return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useRef(initial) {
+      const index = refCursor++;
+      return refs[index] ??= { current: initial };
+    },
+    useEffect(fn) { effects.push(fn); },
+  };
+  t.mock.method(globalThis, 'setTimeout', fn => { timers.set(++timerId, fn); return timerId; });
+  t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, options });
+    if (!options) return { ok: true, json: async () => ({ ok: true, config: {}, revision: 'r1' }) };
+    return new Promise(resolve => { respond = resolve; });
+  });
+  const exports = descriptor.factory(() => react);
+  const render = () => { cursor = 0; refCursor = 0; return exports.SettingsForm(); };
+  const nodes = tree => {
+    if (Array.isArray(tree)) return tree.flatMap(nodes);
+    if (!tree || typeof tree !== 'object') return [];
+    return [tree, ...nodes(tree.children)];
+  };
+  render();
+  await effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  let tree = render();
+  const labels = ['获取平台字幕', '获取评论', '获取弹幕', '获取画面（封面/故事板）', 'Adaptive 补充九宫格'];
+  for (const label of labels) {
+    const input = nodes(tree).find(node => node.props?.['aria-label'] === label);
+    assert.equal(input.props.type, 'checkbox');
+    assert.equal(input.props.checked, true);
+  }
+  const text = JSON.stringify(tree);
+  assert.ok(text.indexOf('视频理解') < text.indexOf('视频取数（节能模式）'));
+  assert.ok(text.indexOf('视频取数（节能模式）') < text.indexOf('开发者'));
+  assert.ok(text.includes('关闭后只影响 extract/collect 的默认采集；显式 comments/inspect 仍可用。画面关闭时 Adaptive 不生效。'));
+
+  for (const [label, full] of [['节能（仅字幕）', false], ['标准（全量）', true]]) {
+    nodes(tree).find(node => node.props?.['aria-label'] === '获取评论').props.onChange({ target: { checked: false } });
+    assert.equal(timers.size, 1);
+    tree = render();
+    const button = nodes(tree).find(node => node.type === 'button' && node.children.includes(label));
+    assert.equal(button.props.disabled, false);
+    const saving = button.props.onClick();
+    assert.equal(timers.size, 0);
+    const request = requests.at(-1);
+    assert.equal(request.url, '/bilibili-bridge/api/settings');
+    assert.deepEqual(JSON.parse(request.options.body), {
+      extract: { subtitles: true, comments: full, danmaku: full, frames: full },
+      adaptive: { adaptiveEnabled: full }, revision: full ? 'r2' : 'r1',
+    });
+    assert.ok(nodes(render()).filter(node => node.type === 'button').every(node => node.props.disabled));
+    respond({ ok: true, json: async () => ({ ok: true, config: {
+      extract: { subtitles: true, comments: full, danmaku: full, frames: full },
+      adaptive: { adaptiveEnabled: full },
+    }, revision: 'r2' }) });
+    await saving;
+    tree = render();
+    assert.ok(JSON.stringify(tree).includes('已保存'));
+    for (const field of labels) {
+      assert.equal(nodes(tree).find(node => node.props?.['aria-label'] === field).props.checked, field === labels[0] || full);
+    }
+  }
 });
 async function loadExports() {
   const descriptor = await loadClient();
