@@ -187,3 +187,15 @@ test('spent normal read quota does not strand login recovery; recovery itself re
   await f.guard.run(nav, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
   await assert.rejects(f.guard.run(nav, async () => result()), e => e.code === 'TRAFFIC_BUDGET_EXCEEDED' && e.data.scope === 'login-recovery');
 });
+
+test('daily quota resets at Shanghai midnight without resetting the current hourly allowance', async t => {
+  const f = await fixture(t, { readDaily: 1, readHourly: 10 });
+  f.advance(57540000 - f.time()); // 1970-01-01 23:59 Asia/Shanghai.
+  await f.guard.run(options, async () => result());
+  await assert.rejects(f.guard.run(options, async () => result()), { code: 'TRAFFIC_BUDGET_EXCEEDED' });
+  f.advance(60000);
+  await f.guard.run(options, async () => result());
+  const status = await f.guard.status(jar());
+  assert.equal(status.remaining.readDaily, 0);
+  assert.equal(status.remaining.readHourly, 8);
+});
