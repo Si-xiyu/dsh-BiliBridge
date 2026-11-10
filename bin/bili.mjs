@@ -29,6 +29,7 @@ import {
   setWatchLater,
 } from '../lib/bili/collections.mjs';
 import { dataDir, readJson, writeJsonAtomic } from '../lib/bili/store.mjs';
+import { trafficGuard } from '../lib/bili/traffic-guard.mjs';
 
 const argv = process.argv.slice(2);
 const command = argv[0];
@@ -48,6 +49,8 @@ function pendingPath() {
 function usage() {
   console.log(`用法:
   status                         登录态与数据目录
+  traffic status                 本地请求预算与暂停状态（不联网）
+  traffic resume --go             完成人工验证后确认恢复（保留暂停与预算）
   qr                             生成登录二维码 PNG（print 路径）
   poll [seconds]                 轮询扫码结果（默认 25 秒）
   login                          终端二维码 + 阻塞等待
@@ -83,6 +86,13 @@ async function main() {
 
     case 'status':
       return print(await status());
+
+    case 'traffic': {
+      const { jar } = await currentJar();
+      if (args[0] === 'status') return print(await trafficGuard.status(jar));
+      if (args[0] === 'resume' && go) return print(await trafficGuard.resume(jar));
+      throw new Error('用法：traffic status 或 traffic resume --go（需先在网页完成人工验证）');
+    }
 
     case 'qr': {
       const { url, key } = await qrStart();
@@ -232,6 +242,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(JSON.stringify({ code: error?.code ?? 'ERROR', message: error?.message ?? String(error) }, null, 2));
+  console.error(JSON.stringify(error?.toJSON?.() ?? { code: error?.code ?? 'ERROR', message: error?.message ?? String(error) }, null, 2));
   process.exitCode = 1;
 });
