@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { explainTrust, mergeWritable, trustedRequest } from '../../lib/media/settings-merge.mjs';
+
+test('取数与自适应开关严格接受 boolean，非法值整份回滚并保留未知字段', () => {
+  for (const [section, key] of [['extract', 'subtitles'], ['extract', 'comments'], ['extract', 'danmaku'], ['extract', 'frames'], ['adaptive', 'adaptiveEnabled']]) {
+    const current = { note: 'keep', [section]: { [key]: true, unknown: 'keep' }, budget: { roundsLimit: 6 } };
+    for (const value of [true, false]) {
+      const result = mergeWritable(current, { [section]: { [key]: value, unknown: 'ignored' } });
+      assert.deepEqual(result.errors, []);
+      assert.deepEqual(result.config, { ...current, [section]: { [key]: value, unknown: 'keep' } });
+    }
+    for (const value of ['true', 'false', 0, 1, null, undefined, [], {}]) {
+      const result = mergeWritable(current, { budget: { roundsLimit: 7 }, [section]: { [key]: value } });
+      assert.ok(result.errors.some(error => error.includes(section + '.' + key)));
+      assert.deepEqual(result.config, current);
+    }
+    assert.equal(current[section][key], true);
+    assert.equal(current.budget.roundsLimit, 6);
+  }
+  for (const patch of [{ extract: null }, { adaptive: [] }]) assert.ok(mergeWritable({}, patch).errors.length);
+});
 test('白名单合并保留未知字段且不修改输入',()=>{
  const current={ffmpegPath:'x',ffmpegCaFile:'y',note:'keep',budget:{roundsLimit:6,note:'nested'}};
  const result=mergeWritable(current,{budget:{roundsLimit:7,note:'ignored'},ffmpegPath:'ignored',unknown:1});
