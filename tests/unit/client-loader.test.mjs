@@ -72,6 +72,125 @@ test('apply 把 section 注册到 settings.section，标签名是「BiliBridge�
   assert.equal(options.order, 200);
   assert.equal(options.label(), 'BiliBridge');
   assert.equal(component, exports.Section);
+  assert.deepEqual(calls.filter(([kind]) => kind === 'inject').map(([, name]) => name),
+    ['settings.section', 'tool.call.toolview', 'tool.call.toolview']);
+  const tools = calls.filter(([kind, options]) => kind === 'register' && options.name === 'tool.call.toolview');
+  assert.deepEqual(tools.map(([, options]) => options.key), ['bilibili_extract', 'bilibili_inspect']);
+  assert.ok(tools.every(([, , component]) => component === exports.BiliToolCard));
+});
+
+function treeNodes(tree) {
+  if (Array.isArray(tree)) return tree.flatMap(treeNodes);
+  if (!tree || typeof tree !== 'object') return [];
+  return [tree, ...treeNodes(tree.children)];
+}
+
+const imageBlock = () => ({ kind: 'settled', content: [{ type: 'image', attachment: {
+  attachmentId: 'sha256:abc', name: 'storyboard.jpg', mediaType: 'image/jpeg',
+} }] });
+
+async function toolCardHarness(props) {
+  const states = [], dependencies = [], cleanups = [], effects = [];
+  let cursor = 0, effectCursor = 0;
+  const react = {
+    ...fakeReact(),
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = typeof initial === 'function' ? initial() : initial;
+      return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useEffect(effect, deps) {
+      const index = effectCursor++;
+      if (!dependencies[index] || deps.some((dep, i) => !Object.is(dep, dependencies[index][i]))) {
+        dependencies[index] = deps;
+        effects.push(() => { cleanups[index]?.(); cleanups[index] = effect(); });
+      }
+    },
+  };
+  const exports = (await loadClient()).factory(() => react);
+  return {
+    render(next = props) { cursor = 0; effectCursor = 0; return exports.BiliToolCard(next); },
+    async flush() {
+      effects.splice(0).forEach(effect => effect());
+      // Let the real promises and allSettled completion update state before re-rendering.
+      await new Promise(resolve => queueMicrotask(resolve));
+      await new Promise(resolve => setImmediate(resolve));
+    },
+  };
+}
+
+test('工具图片卡片：effect 解析 Promise 后渲染真实 URL 和封面标签', async () => {
+  const block = imageBlock();
+  const calls = [];
+  const harness = await toolCardHarness({ block, loadImage(attachment) {
+    calls.push(attachment); return Promise.resolve('/img/a.jpg');
+  } });
+  assert.equal(treeNodes(harness.render()).filter(node => node.type === 'img').length, 0);
+  await harness.flush();
+  const tree = harness.render();
+  assert.equal(treeNodes(tree).find(node => node.type === 'img')?.props.src, '/img/a.jpg');
+  assert.deepEqual(calls, [block.content[0].attachment]);
+  assert.match(JSON.stringify(tree), /封面/);
+});
+
+for (const [name, loader] of [
+  ['拒绝', () => Promise.reject(new Error('image unavailable'))],
+  ['undefined', () => undefined],
+  ['同步抛错', () => { throw new Error('loader failed'); }],
+  ['缺失', undefined],
+]) {
+  test(`工具图片卡片：loadImage ${name} 时保留文字且不抛错`, async () => {
+    const harness = await toolCardHarness({ block: imageBlock(), loadImage: loader });
+    assert.doesNotThrow(() => harness.render());
+    await harness.flush();
+    const tree = harness.render();
+    assert.equal(treeNodes(tree).filter(node => node.type === 'img').length, 0);
+    assert.match(JSON.stringify(tree), /封面/);
+  });
+}
+
+test('工具图片卡片：peek 缓存立即显示、默认展开并可收起', async () => {
+  const loadImage = () => Promise.resolve('/img/new.jpg');
+  loadImage.peek = () => '/img/cached.jpg';
+  const harness = await toolCardHarness({ block: imageBlock(), loadImage });
+  const tree = harness.render();
+  assert.equal(treeNodes(tree).find(node => node.type === 'img')?.props.src, '/img/cached.jpg');
+  const button = treeNodes(tree).find(node => node.type === 'button');
+  assert.equal(button.props['aria-expanded'], true);
+  button.props.onClick();
+  assert.equal(treeNodes(harness.render()).filter(node => node.type === 'img').length, 0);
+});
+
+test('工具图片卡片：无 kind 的运行阶段与无图结果安全显示文字', async () => {
+  const harness = await toolCardHarness({ block: { content: [] } });
+  assert.match(JSON.stringify(harness.render()), /运行中|准备中/);
+  const block = { kind: 'settled', content: [{ type: 'text', text: 'ok' },
+    { type: 'image', attachment: { attachmentId: ' ' } }, { type: 'image' }] };
+  assert.match(JSON.stringify(harness.render({ block })), /本次调用没有产出图片/);
+});
+
+test('工具图片卡片：标签映射和渲染异常降级', async () => {
+  const exports = await loadExports();
+  for (const [name, label] of [['storyboard.jpg', '封面 + 故事板九宫格'], ['adaptive.jpg', '自适应九宫格'],
+    ['frames-12.jpg', '抽帧拼图 12'], ['cover.jpg', '封面'], ['other.png', 'other.png']]) {
+    assert.equal(exports.imageLabel(name), label);
+  }
+  const props = { get block() { throw new Error('bad props'); } };
+  // 取 block 抛错时：hooks 仍然执行，组件降级为「运行中」文案，不把异常抛给 React。
+  assert.doesNotThrow(() => exports.BiliToolCard(props));
+  assert.match(JSON.stringify(exports.BiliToolCard(props)), /运行中|准备中/);
+});
+
+test('工具图片卡片：注入和延迟注册抛错均不影响 apply', async () => {
+  const exports = await loadExports();
+  const callbacks = [];
+  assert.doesNotThrow(() => exports.apply({ slots: {
+    inject(name, callback) { if (name === 'tool.call.toolview') callbacks.push(callback); },
+    register() { throw new Error('register failed'); },
+  } }));
+  assert.equal(callbacks.length, 2);
+  callbacks.forEach(callback => assert.doesNotThrow(callback));
+  assert.doesNotThrow(() => exports.apply({ slots: { inject() { throw new Error('inject failed'); } } }));
 });
 test('客户端源码保留中文文案（防止再次被写成问号占位）', async () => {
   const { readFile } = await import('node:fs/promises');
@@ -238,7 +357,7 @@ test('右侧 dock：tab 类型与 body 的 key 一致，且带「开始」页卡
   assert.equal(body.key, definition.id);
 });
 
-test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
+test('右侧栏服务缺失时：注册设置页和工具卡片，不抛错', async () => {
   const descriptor = await loadClient();
   const exports = descriptor.factory(() => fakeReact());
   const registered = [];
@@ -248,7 +367,7 @@ test('右侧栏服务缺失时：只注册设置页，不抛错', async () => {
     inject() {},
   };
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'tool.call.toolview', 'tool.call.toolview']);
 });
 
 test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮', async () => {
@@ -261,7 +380,7 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   };
   Object.defineProperty(ctx, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(ctx));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'tool.call.toolview', 'tool.call.toolview']);
 });
 
 test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pending）', async () => {
@@ -274,7 +393,7 @@ test('apply 本身同步返回，不等待右侧栏服务（否则 entry 会 pen
   };
   const returned = exports.apply(ctx);
   assert.equal(returned, undefined);
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'tool.call.toolview', 'tool.call.toolview']);
 });
 test('所有导出的组件都能渲染（防止删掉中间组件导致整页空白）', async () => {
   const exports = await loadExports();
@@ -308,5 +427,5 @@ test('访问右侧栏服务就抛错时，apply 也不能把宿主启动拖垮',
   // 模拟 cordis 未注入服务时的 getter 抛错（真实崩溃就是这么发生的）
   Object.defineProperty(hostile, 'sidebarRightTabs', { get() { throw new Error('service not injected'); } });
   assert.doesNotThrow(() => exports.apply(hostile));
-  assert.deepEqual(registered.map((item) => item.name), ['settings.section']);
+  assert.deepEqual(registered.map((item) => item.name), ['settings.section', 'tool.call.toolview', 'tool.call.toolview']);
 });
