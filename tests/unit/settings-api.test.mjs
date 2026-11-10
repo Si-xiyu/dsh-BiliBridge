@@ -69,7 +69,7 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
 
   assert.deepEqual(routes.map((r) => [r.kind, r.path]), [
     ['exact', '/bilibili-bridge/api/status'], ['exact', '/bilibili-bridge/api/avatar'], ['exact', '/bilibili-bridge/api/settings'], ['exact', '/bilibili-bridge/api/settings/reset'],
-    ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history', 'dev/log', 'dev/clear'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
+    ...['cache/clear', 'account/logout', 'account/qr/start', 'account/qr/poll', 'history', 'dev/log', 'dev/clear', 'images', 'image'].map(name => ['exact', '/bilibili-bridge/api/' + name]),
   ]);
 
   let code;
