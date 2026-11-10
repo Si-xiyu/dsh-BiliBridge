@@ -47,6 +47,7 @@ test('real HTTP guard blocks all later tools and media after a business risk res
     return true;
   });
   await assert.rejects(request(url, { jar: jar(), method: 'POST' }), { code: 'TRAFFIC_PAUSED', submission: 'not-submitted' });
+  await assert.rejects(request('https://api.bilibili.com/x/web-interface/nav', { jar: jar() }), { code: 'TRAFFIC_PAUSED' });
   await assert.rejects(fetchBuffer('https://i0.hdslb.com/image.png'), { code: 'TRAFFIC_PAUSED' });
   await assert.rejects(runFfmpeg(['-i', 'https://cdn.bilivideo.com/test.mp4']), { code: 'TRAFFIC_PAUSED' });
   assert.equal(f.calls.length, 1);

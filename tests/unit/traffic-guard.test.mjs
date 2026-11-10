@@ -78,7 +78,7 @@ test('captcha and expired login need explicit recovery; fresh nav cannot reset p
   await f.guard.resume(jar());
   await f.guard.run(options, async () => result(-101));
   await assert.rejects(f.guard.resume(jar()), { code: 'TRAFFIC_MANUAL_REQUIRED' });
-  const nav = { ...options, url: 'https://api.bilibili.com/x/web-interface/nav' };
+  const nav = { ...options, url: 'https://api.bilibili.com/x/web-interface/nav', recovery: true };
   await f.guard.run(nav, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
   assert.equal((await f.guard.status(jar())).manual, 'auth');
   await f.guard.run({ ...nav, jar: jar('123', 'new-session') }, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
@@ -89,7 +89,7 @@ test('captcha and expired login need explicit recovery; fresh nav cannot reset p
   const after = await f.guard.status(jar());
   assert.equal(before.resumeAt, after.resumeAt);
   assert.deepEqual(before.remaining, after.remaining);
-  await f.guard.run({ url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate' }, async () => result());
+  await f.guard.run({ url: 'https://passport.bilibili.com/x/passport-login/web/qrcode/generate', recovery: true }, async () => result());
   await f.guard.run(nav, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
   await assert.rejects(f.guard.run(options, async () => result()), { code: 'TRAFFIC_PAUSED' });
 });
@@ -183,7 +183,8 @@ test('spent normal read quota does not strand login recovery; recovery itself re
   const f = await fixture(t, { readHourly: 1 });
   await f.guard.run(options, async () => result());
   await assert.rejects(f.guard.run(options, async () => result()), { code: 'TRAFFIC_BUDGET_EXCEEDED' });
-  const nav = { ...options, url: 'https://api.bilibili.com/x/web-interface/nav' };
+  const nav = { ...options, url: 'https://api.bilibili.com/x/web-interface/nav', recovery: true };
+  await assert.rejects(f.guard.run({ ...nav, recovery: false }, async () => result()), { code: 'TRAFFIC_BUDGET_EXCEEDED' });
   await f.guard.run(nav, async () => result(0, 200, {}, { isLogin: true, mid: 123 }));
   await assert.rejects(f.guard.run(nav, async () => result()), e => e.code === 'TRAFFIC_BUDGET_EXCEEDED' && e.data.scope === 'login-recovery');
 });
