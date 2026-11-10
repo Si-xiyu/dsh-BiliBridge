@@ -89,6 +89,41 @@ const imageBlock = () => ({ kind: 'settled', content: [{ type: 'image', attachme
   attachmentId: 'sha256:abc', name: 'storyboard.jpg', mediaType: 'image/jpeg',
 } }] });
 
+test('工具图片预览：点击打开，遮罩、按钮和 Esc 关闭并清理监听', async () => {
+  const loadImage = () => '/img/zoom.jpg';
+  loadImage.peek = loadImage;
+  const harness = await toolCardHarness({ block: imageBlock(), loadImage });
+  const listeners = new Map();
+  window.addEventListener = (name, fn) => listeners.set(name, fn);
+  window.removeEventListener = (name, fn) => {
+    assert.equal(listeners.get(name), fn);
+    listeners.delete(name);
+  };
+  const overlay = () => treeNodes(harness.render()).find(node => node.props.style?.position === 'fixed');
+  assert.equal(overlay(), undefined);
+  for (const close of ['overlay', 'button', 'escape']) {
+    const thumbnail = treeNodes(harness.render()).find(node => node.type === 'img');
+    assert.equal(thumbnail.props.title, '点击放大');
+    assert.equal(thumbnail.props.style.cursor, 'zoom-in');
+    thumbnail.props.onClick();
+    const dialog = overlay();
+    assert.ok(dialog);
+    const image = treeNodes(dialog).find(node => node.type === 'img');
+    assert.equal(image.props.src, '/img/zoom.jpg');
+    assert.equal(image.props.style.maxHeight, '86vh');
+    assert.equal(image.props.style.maxWidth, '94vw');
+    assert.match(JSON.stringify(dialog), /封面/);
+    await harness.flush();
+    assert.equal(listeners.has('keydown'), true);
+    if (close === 'escape') listeners.get('keydown')({ key: 'Escape' });
+    else if (close === 'button') treeNodes(dialog).find(node => node.type === 'button').props.onClick();
+    else dialog.props.onClick();
+    assert.equal(overlay(), undefined);
+    await harness.flush();
+    assert.equal(listeners.size, 0);
+  }
+});
+
 async function toolCardHarness(props) {
   const states = [], dependencies = [], cleanups = [], effects = [];
   let cursor = 0, effectCursor = 0;
