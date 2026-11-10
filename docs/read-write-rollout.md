@@ -11,7 +11,7 @@
 - 私信读取与发送标记为 sensitive，devlog 不落正文/结果预览。
 - Codex review 修复：`publish_draft_now` 的 token 绑定草稿 `requestHash`；`delete_comment` 预览先校验评论作者属于当前账号；`delete_dynamic` apply 不再把 4101152 当“已删除”，直接按绑定 id 尝试删除、只认 500404；附件能力不可用时跳过图片下载。
 
-验证：`npm run test:single` **231/231**；27 个工具 schema **19,145 bytes**（测试上限 20,000）。私信读库层已用真实账号只读探测 `get_sessions`/`fetch_session_msgs` 通过。**未重启 DSH，宿主工具层/审批路径未验收。**
+验证：`npm run test:single` **235/235**；27 个工具 schema **19,187 bytes**（测试上限 20,000）。私信读库层已用真实账号只读探测 `get_sessions`/`fetch_session_msgs` 通过。**未重启 DSH，宿主工具层/审批路径未验收。**
 
 2026-11-10 真实库层 E2E（账号 四夕羽_，脚本 `tests/manual-op-e2e.mjs --apply`，每项写完回读并清理）：
 
