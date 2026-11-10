@@ -2,6 +2,8 @@
 
 DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据提取，暴露给主 Agent（DeepSeek）。
 
+本项目采用 [MIT 许可证](LICENSE)，Copyright (c) 2026 Si-xiyu。第三方依赖遵循各自的许可证。
+
 ## 当前状态
 
 完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
