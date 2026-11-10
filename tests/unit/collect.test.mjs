@@ -47,3 +47,45 @@ test('collect enforces aggregate output budget and lists unprocessed candidates'
     assert.ok(Buffer.byteLength(JSON.stringify(result.results)) <= 512000);
   });
 });
+
+test('collect skips settings-disabled comments and subtitles without errors or partial results', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = await mkdtemp(join(tmpdir(), 'collect-settings-'));
+  const previous = process.env.BILI_DATA_DIR;
+  try {
+    process.env.BILI_DATA_DIR = dir;
+    for (const extract of [
+      { comments: false, subtitles: false },
+      { comments: false, subtitles: true },
+      { comments: true, subtitles: false },
+    ]) {
+      await writeFile(join(dir, 'config.json'), JSON.stringify({ extract }));
+      const calls = [];
+      await network(url => {
+        calls.push(url.pathname);
+        if (url.pathname.endsWith('/search/type')) return { result: candidates.slice(0, 1), numResults: 1 };
+        if (url.pathname === '/x/v2/reply' && extract.comments) return { replies: [], page: { count: 0 } };
+        if (url.pathname.endsWith('/view')) return { bvid: candidates[0].bvid, aid: 1, pages: [{ page: 1, cid: 2, duration: 60 }] };
+        if (url.pathname.endsWith('/wbi/v2') && extract.subtitles) return { subtitle: { subtitles: [] } };
+        assert.fail('unexpected request ' + url.pathname);
+      }, async () => {
+        const result = await collect({ keyword: 'test', maxVideos: 1, jar });
+        assert.equal(result.partial, false, JSON.stringify(result));
+        assert.deepEqual(result.unprocessed, []);
+        assert.equal(result.stopped, null);
+        const row = result.results[0];
+        assert.deepEqual(row.errors, []);
+        for (const source of ['comments', 'subtitles']) if (!extract[source]) {
+          assert.deepEqual(row[source], { status: 'skipped', skippedBy: 'settings' });
+        }
+      });
+      if (!extract.comments) assert.ok(!calls.includes('/x/v2/reply'));
+      if (!extract.subtitles) assert.ok(!calls.some(p => p.endsWith('/wbi/v2')));
+    }
+  } finally {
+    if (previous === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

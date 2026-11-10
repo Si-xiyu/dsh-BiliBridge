@@ -3,10 +3,20 @@
 > 这是**唯一**的当前状态文档。接手的人/agent 只读这一份就能知道项目在哪、什么能用、什么没做。
 > 一次性产物（旧 handoff、任务提示词）在 `docs/archive/` 里，仅作历史参考。
 
-更新时间：2026-11-09（Asia/Shanghai）
+更新时间：2026-11-10（Asia/Shanghai）
 
-新增：Stage 1 默认 Uniform + Adaptive 双九宫格；inspect 支持全片／区间自适应选帧，复用 maxFrames 和最多 2×3 拼图。新增实现与真实 B站验收见 [adaptive-frames.md](adaptive-frames.md)。当前自动测试 **235/235**，通过不代表已完成多类别语义质量或 DSH 宿主附件验收。以下既有阶段记录保留历史统计。
-阶段：**基础读写 P0/P1 与 auto-dev 功能已完成集成，dev-op 读写补全已实现但未做宿主重启验收**；27 个工具，235/235 测试通过，真实读取与收藏/稍后观看往返通过。保留设置页 P3、开发者模式、十条设置路由及动态图片/原动态索引；未改审批策略，未重启 DSH。交付与限制见 [read-write-rollout.md](read-write-rollout.md)。以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
+新增：Stage 1 默认 Uniform + Adaptive 双九宫格；inspect 支持全片／区间自适应选帧，复用 maxFrames 和最多 2×3 拼图。新增实现与真实 B站验收见 [adaptive-frames.md](adaptive-frames.md)。当前自动测试 **250/250**，通过不代表已完成多类别语义质量或 DSH 宿主附件验收。以下既有阶段记录保留历史统计。
+阶段：**基础读写 P0/P1 与 auto-dev 功能已完成集成，dev-op 读写补全已实现但未做宿主重启验收**；27 个工具，250/250 测试通过，真实读取与收藏/稍后观看往返通过。保留设置页 P3、开发者模式、十条设置路由及动态图片/原动态索引；未改审批策略，未重启 DSH。交付与限制见 [read-write-rollout.md](read-write-rollout.md)。以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
+
+## 2026-11-10 eco-mode：视频取数节能模式
+
+- 配置：`extract.{subtitles,comments,danmaku,frames}` 与 `adaptive.adaptiveEnabled` 均默认 `true`。settings-merge / settings-api 支持读写与 reset，analysisConfig() / extractConfig() 提供读取。
+- 设置页新增「视频取数（节能模式）」五个开关与「节能（仅字幕）」「标准（全量）」预设，详见 [设置面板第 13 节](settings-panel.md#13-节能模式2026-11-10-实现)。总结视频推荐仅字幕预设。
+- 行为与优先级：buildEvidence / collect 遵守设置；设置与 include 为 AND，调用方不能重新开启设置关闭的来源。主动关闭的来源为 `sources.status='skipped'`，`skippedBy='settings'|'caller'`，设置关闭优先；不误报缺失 gaps，bundle.danmaku/comments.status 与 sources 一致。subtitleCursor / danmakuWindow 与对应来源关闭冲突时返回 `INVALID_ARGUMENT`。
+- 作用范围：frames 控制 Stage 1 画面；adaptive 只控制 Stage 1 自动补充九宫格，不能越过 frames 开关。显式 comments / inspect / transcribe 不受这五项限制，仍遵守原有预算和 ASR/OCR 设置。
+- **设置保存后下一次调用生效；代码更新需重启 DSH。**
+- 自动测试：`npm.cmd run test:single` **250/250**；工具仍为 **27 个**，schema 低于 20,000 bytes。自动测试不代表真实取数或宿主验收。
+- 未做：本轮文档更新未执行真实 B 站调用、DSH 重启或宿主设置页/附件验收；未新增工具或改变审批策略。
 
 ## 0. 2026-11-09/10 dev-op：读写补全与真实 E2E
 

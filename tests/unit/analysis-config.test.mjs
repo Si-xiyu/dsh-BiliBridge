@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -8,11 +8,41 @@ import test from 'node:test';
 const dir = await mkdtemp(join(tmpdir(), 'bilibili-config-'));
 process.env.BILI_DATA_DIR = dir;
 
-const { ANALYSIS_DEFAULTS, analysisConfig, validateAsrSettings } = await import('../../lib/media/analysis-config.mjs');
+const { ANALYSIS_DEFAULTS, analysisConfig, extractConfig, validateAsrSettings } = await import('../../lib/media/analysis-config.mjs');
 
 async function writeConfig(payload) {
   await writeFile(join(dir, 'config.json'), JSON.stringify(payload), 'utf8');
 }
+
+test('extract 缺失、损坏默认全部开启，adaptive 默认用于重置', async () => {
+  const expected = { subtitles: true, comments: true, danmaku: true, frames: true };
+  assert.deepEqual(ANALYSIS_DEFAULTS.extract, expected);
+  assert.deepEqual(ANALYSIS_DEFAULTS.adaptive, { adaptiveEnabled: true });
+  assert.deepEqual(extractConfig(), expected);
+  await writeFile(join(dir, 'config.json'), '{ broken', 'utf8');
+  assert.deepEqual(analysisConfig().extract, expected);
+  await unlink(join(dir, 'config.json'));
+  await writeConfig({});
+  assert.deepEqual(extractConfig(), expected);
+});
+
+test('extract 四个开关读取布尔值，忽略非法值且返回独立对象', async () => {
+  for (const value of [false, true]) {
+    const extract = { subtitles: value, comments: value, danmaku: value, frames: value };
+    await writeConfig({ extract });
+    assert.deepEqual(analysisConfig().extract, extract);
+    assert.deepEqual(extractConfig(), extract);
+  }
+  const result = extractConfig();
+  result.frames = false;
+  assert.equal(extractConfig().frames, true);
+  for (const value of ['false', 0, 1, null, [], {}]) {
+    await writeConfig({ extract: { subtitles: value, comments: value, danmaku: value, frames: value } });
+    assert.deepEqual(extractConfig(), ANALYSIS_DEFAULTS.extract);
+  }
+  await writeConfig({ extract: { frames: false, subtitles: 'false', unknown: false } });
+  assert.deepEqual(extractConfig(), { subtitles: true, comments: true, danmaku: true, frames: false });
+});
 
 test('配置缺失时全部回落到默认值', async () => {
   await writeFile(join(dir, 'config.json'), '', 'utf8');

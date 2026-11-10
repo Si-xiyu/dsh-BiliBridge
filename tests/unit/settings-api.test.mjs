@@ -223,7 +223,7 @@ function harness(current, { corrupt = false, missing = false } = {}) {
       writeJsonAtomic: async (path, value) => { state.value = value; writes.push([path, value]); },
     },
   );
-  return { handler: routes[2].handler, writes };
+  return { handler: routes[2].handler, resetHandler: routes[3].handler, writes };
 }
 
 function fakeReq({ method = 'GET', body, headers = TRUST, remote = '127.0.0.1' } = {}) {
@@ -242,6 +242,35 @@ async function call(handler, options) {
   await handler(fakeReq(options), { writeHead(value) { code = value; }, end(value) { result = JSON.parse(value); } });
   return { code, result };
 }
+
+test('settings 新开关支持保存与读取，非法提交不写入，未知字段保留', async () => {
+  const { handler, writes } = harness({ note: 'keep', extract: { unknown: 'keep' }, adaptive: { unknown: 'keep' } });
+  const patch = { extract: { subtitles: false, comments: false, danmaku: false, frames: false }, adaptive: { adaptiveEnabled: false } };
+  for (const invalid of [{ extract: { frames: 'false' } }, { adaptive: { adaptiveEnabled: 0 } }]) {
+    assert.equal((await call(handler, { method: 'POST', body: JSON.stringify(invalid) })).code, 400);
+  }
+  assert.equal(writes.length, 0);
+  const saved = await call(handler, { method: 'POST', body: JSON.stringify(patch) });
+  assert.equal(saved.code, 200);
+  assert.deepEqual(saved.result.config.extract, patch.extract);
+  assert.deepEqual(saved.result.config.adaptive, patch.adaptive);
+  assert.equal(writes[0][1].note, 'keep');
+  assert.equal(writes[0][1].extract.unknown, 'keep');
+  assert.equal(writes[0][1].adaptive.unknown, 'keep');
+  assert.deepEqual((await call(handler, {})).result.config, saved.result.config);
+});
+
+test('settings reset 恢复取数与自适应默认值并保留未知顶层键', async () => {
+  const { resetHandler, writes } = harness({ note: 'keep', extract: { frames: false }, adaptive: { adaptiveEnabled: false } });
+  const response = await call(resetHandler, { method: 'POST' });
+  assert.equal(response.code, 200);
+  const extract = { subtitles: true, comments: true, danmaku: true, frames: true };
+  assert.deepEqual(response.result.config.extract, extract);
+  assert.deepEqual(response.result.config.adaptive, { adaptiveEnabled: true });
+  assert.deepEqual(writes[0][1].extract, extract);
+  assert.deepEqual(writes[0][1].adaptive, { adaptiveEnabled: true });
+  assert.equal(writes[0][1].note, 'keep');
+});
 
 test('来源校验 fail closed：非回环、缺 Host、缺 Origin、跨源都拒绝', async () => {
   const { handler, writes } = harness({});
