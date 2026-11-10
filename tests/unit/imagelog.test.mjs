@@ -13,6 +13,7 @@ test('图片登记：去重、最新优先、limit 生效', () => {
   assert.equal(items[0].path, 'C:/cache/BV1/a.jpg', '重复登记应移到最新');
   assert.equal(items[1].path, 'C:/cache/BV1/b.jpg');
   assert.equal(listImages({ limit: 1 }).length, 1);
+  assert.equal(listImages({ limit: 0 }).length, 1, 'limit=0 应夹到 1，而不是回退默认值');
 });
 
 test('图片登记：缺少路径或 bvid 直接忽略', () => {
