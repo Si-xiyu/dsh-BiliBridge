@@ -34,7 +34,7 @@ async function isolated(run) {
       rpid_str: '42', member: { mid: commentMid }, content: { message: '我的评论' },
     }, replies: [] } });
     if (url.pathname.endsWith('/x/v2/reply')) return Response.json({ code: 0, data: { page: { pn: 1, ps: 20, count: 0 }, replies: [] } });
-    if (url.pathname.endsWith('/draft_list')) return Response.json({ code: 0, data: { drafts: [
+    if (url.pathname.endsWith('/get_drafts')) return Response.json({ code: 0, data: { drafts: [
       { draft_id: 777, type: 2, publish_time: 1700003600, request: draftRequest },
     ] } });
     throw new Error('unexpected GET ' + url.pathname);
