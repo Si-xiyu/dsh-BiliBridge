@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeCache, assembleStatus, readStatus, registerSettingsRoutes, selectForCleanup } from '../../lib/settings-api.mjs';
+import { runtimeCacheResets } from '../../lib/media/settings-merge.mjs';
 import { listAnalyses } from '../../lib/media/budget.mjs';
 
 test('缓存按真实文件名归类（asr / storyboard / cover / inspect / avatar / 其它）', () => {
@@ -206,13 +207,14 @@ test('history route clamps limit to 1–50', async () => {
   }
 });
 
-function harness(current, { corrupt = false, missing = false } = {}) {
+function harness(current, { corrupt = false, missing = false } = {}, extraReaders = {}) {
   const state = { value: current, reads: 0, corruptAfterFirst: Boolean(arguments[1]?.corruptAfterFirst) };
   const routes = [];
   const writes = [];
   registerSettingsRoutes(
     { inject(names, callback) { callback({ webServer: { register(route) { routes.push(route); return () => {}; } } }); } },
     {
+      ...extraReaders,
       readFile: async () => {
         state.reads += 1;
         if (missing) { const error = new Error('missing'); error.code = 'ENOENT'; throw error; }
@@ -258,6 +260,99 @@ test('settings 新开关支持保存与读取，非法提交不写入，未知�
   assert.equal(writes[0][1].extract.unknown, 'keep');
   assert.equal(writes[0][1].adaptive.unknown, 'keep');
   assert.deepEqual((await call(handler, {})).result.config, saved.result.config);
+});
+
+test('settings 保存 runtime 运行路径：publicConfig 回显，并按生效值决定清哪个缓存', async () => {
+  let ffmpegResets = 0;
+  let asrResets = 0;
+  const { handler, writes } = harness({ note: 'keep', ffmpegPath: '/legacy/ffmpeg' }, {}, {
+    resetFfmpegCache: () => { ffmpegResets += 1; },
+    resetAsrCache: () => { asrResets += 1; },
+  });
+  const patch = { runtime: { ffmpegPath: '/opt/homebrew/bin/ffmpeg', ffmpegCaFile: '/etc/ssl/cert.pem', asrPython: '/opt/py/bin/python', asrModelDir: '/models' } };
+  const saved = await call(handler, { method: 'POST', body: JSON.stringify(patch) });
+  assert.equal(saved.code, 200);
+  assert.deepEqual(saved.result.config.runtime, patch.runtime, 'runtime 必须出现在 publicConfig 里');
+  // 旧版顶层键没被搬走，也没被写入响应
+  assert.equal(writes[0][1].ffmpegPath, '/legacy/ffmpeg');
+  assert.equal(Object.hasOwn(saved.result.config, 'ffmpegPath'), false);
+  assert.deepEqual([ffmpegResets, asrResets], [1, 1]);
+
+  // 同样的值再保存：生效值没变，不清缓存
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify(patch) })).code, 200);
+  assert.deepEqual([ffmpegResets, asrResets], [1, 1]);
+
+  // 只改无关段：不清
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 7 } }) })).code, 200);
+  assert.deepEqual([ffmpegResets, asrResets], [1, 1]);
+
+  // 只改 ffmpeg 路径：只清 ffmpeg
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ runtime: { ffmpegPath: '/usr/bin/ffmpeg' } }) })).code, 200);
+  assert.deepEqual([ffmpegResets, asrResets], [2, 1]);
+
+  // 只改模型目录：只清 asr
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ runtime: { asrModelDir: '/models2' } }) })).code, 200);
+  assert.deepEqual([ffmpegResets, asrResets], [2, 2]);
+  assert.equal(writes.length, 5);
+});
+
+test('保存 runtime.asrPython 会重启 ASR daemon，无关保存不重启', async () => {
+  const calls = { ffmpeg: 0, asr: 0, daemon: 0 };
+  const { handler } = harness({ runtime: { asrPython: '/old/python', asrModelDir: '/old/models' } }, {}, {
+    resetFfmpegCache: () => { calls.ffmpeg += 1; },
+    resetAsrCache: () => { calls.asr += 1; },
+    resetAsrDaemon: () => { calls.daemon += 1; },
+  });
+  // 无关设置：三个缓存/进程都不动
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ budget: { roundsLimit: 7 } }) })).code, 200);
+  assert.deepEqual(calls, { ffmpeg: 0, asr: 0, daemon: 0 });
+
+  // 解释器变化：清运行时缓存 + 重启 daemon（否则下一次转写仍用旧 python），不碰 ffmpeg
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ runtime: { asrPython: '/new/python' } }) })).code, 200);
+  assert.deepEqual(calls, { ffmpeg: 0, asr: 1, daemon: 1 });
+
+  // 模型目录变化：daemon 的 --model-dir 也是启动时固定的，同样要重启
+  assert.equal((await call(handler, { method: 'POST', body: JSON.stringify({ runtime: { asrModelDir: '/new/models' } }) })).code, 200);
+  assert.deepEqual(calls, { ffmpeg: 0, asr: 2, daemon: 2 });
+});
+
+test('publicConfig 把旧版顶层运行路径投影到 runtime，嵌套优先且显式空串保留', async () => {
+  // 只有旧版顶层键：仍要显示在 runtime.*，不能装成“自动”
+  const legacy = harness({ ffmpegPath: '/legacy/ffmpeg', asrPython: '/legacy/python', note: 'keep' });
+  const view = await call(legacy.handler, {});
+  assert.equal(view.result.config.runtime.ffmpegPath, '/legacy/ffmpeg');
+  assert.equal(view.result.config.runtime.asrPython, '/legacy/python');
+  assert.equal(Object.hasOwn(view.result.config.runtime, 'ffmpegCaFile'), false);
+  assert.equal(legacy.writes.length, 0, 'GET 不写文件');
+
+  // 嵌套显式空串：保持 ''（= 自动），不回落 legacy
+  const empty = harness({ ffmpegPath: '/legacy/ffmpeg', runtime: { ffmpegPath: '' } });
+  assert.equal((await call(empty.handler, {})).result.config.runtime.ffmpegPath, '');
+
+  // 嵌套有值：嵌套优先，legacy 不覆盖
+  const nested = harness({ ffmpegPath: '/legacy/ffmpeg', runtime: { ffmpegPath: '/nested/ffmpeg' } });
+  assert.equal((await call(nested.handler, {})).result.config.runtime.ffmpegPath, '/nested/ffmpeg');
+
+  // 保存 runtime 后写回文件：旧版顶层键必须原样保留（UI 投影只是响应层）
+  const save = harness({ ffmpegPath: '/legacy/ffmpeg', asrPython: '/legacy/python' });
+  const saved = await call(save.handler, { method: 'POST', body: JSON.stringify({ runtime: { asrPython: '/new/python' } }) });
+  assert.equal(saved.code, 200);
+  assert.equal(save.writes[0][1].ffmpegPath, '/legacy/ffmpeg');
+  assert.equal(save.writes[0][1].asrPython, '/legacy/python');
+  assert.equal(saved.result.config.runtime.ffmpegPath, '/legacy/ffmpeg');
+  assert.equal(saved.result.config.runtime.asrPython, '/new/python');
+});
+
+test('legacy 平铺键变化仍触发 ffmpeg 重置（按生效值比较，runtime 覆盖时不误触发）', () => {
+  assert.deepEqual(runtimeCacheResets({ ffmpegPath: 'a' }, { ffmpegPath: 'b' }), { ffmpeg: true, asr: false });
+  assert.deepEqual(runtimeCacheResets({ ffmpegCaFile: 'a.pem' }, { ffmpegCaFile: 'b.pem' }), { ffmpeg: true, asr: false });
+  assert.deepEqual(runtimeCacheResets({ asrPython: '/a' }, { asrPython: '/b' }), { ffmpeg: false, asr: true });
+  assert.deepEqual(runtimeCacheResets({}, {}), { ffmpeg: false, asr: false });
+  // runtime 段覆盖了旧键：改旧键不改变生效值，不该白清缓存
+  const nested = { runtime: { ffmpegPath: '/nested' } };
+  assert.deepEqual(runtimeCacheResets({ ...nested, ffmpegPath: 'a' }, { ...nested, ffmpegPath: 'b' }), { ffmpeg: false, asr: false });
+  // 旧键值与新 runtime 值相同：生效值不变
+  assert.deepEqual(runtimeCacheResets({ ffmpegPath: '/same' }, { runtime: { ffmpegPath: '/same' } }), { ffmpeg: false, asr: false });
 });
 
 test('settings reset 恢复取数与自适应默认值并保留未知顶层键', async () => {

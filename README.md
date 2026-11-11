@@ -34,6 +34,8 @@ node "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-bridge\bi
 
 没有 `dsh` 命令、想用链接安装，或需要完整的依赖矩阵与排障：见 [INSTALL.md](INSTALL.md)。
 
+如果你是 AI agent，按 [AGENT-INSTALL.md](AGENT-INSTALL.md) 执行：分步命令、验收标准、失败对照表与红线。
+
 ## 当前状态
 
 完整状态见 [docs/state.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/capability-matrix.md)。
@@ -156,6 +158,9 @@ node bin/bili.mjs doctor --json   # 机器可读（CI / 脚本）
 **必需项是 runtime 与 storage**：失败时退出码为 1；ffmpeg / ASR / OCR / sharp 缺失只标注，
 不阻断插件启动（会按既有语义明确降级）。设置页状态接口同时返回 `identity`（版本、模块路径、工具数），
 可用来确认宿主加载的是哪一份代码。存储检查会按需创建数据目录并写一个临时文件（随即删除），其余检查只读、不联网。
+
+运行时路径（ffmpeg、CA 证书、ASR Python、模型目录）可直接在 设置 →「BiliBridge」→「运行时路径」里编辑：
+留空表示自动探测，保存后下一次调用生效；等价于 `config.json` 的 `runtime` 段（旧版顶层键仍兼容）。
 
 ## 开发 CLI
 

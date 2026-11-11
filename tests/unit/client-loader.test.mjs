@@ -311,6 +311,91 @@ test('设置页：取数开关默认开启，预设清理自动保存并携带 r
     }
   }
 });
+test('设置页：运行时路径是文本框，输入按 runtime 合并提交，清空提交空串', async (t) => {
+  const descriptor = await loadClient();
+  const states = [], refs = [], effects = [], requests = [], timers = new Map();
+  let cursor = 0, refCursor = 0, timerId = 0, respond;
+  const react = {
+    ...fakeReact(),
+    useState(initial) {
+      const index = cursor++;
+      if (!(index in states)) states[index] = initial;
+      return [states[index], value => { states[index] = typeof value === 'function' ? value(states[index]) : value; }];
+    },
+    useRef(initial) {
+      const index = refCursor++;
+      return refs[index] ??= { current: initial };
+    },
+    useEffect(fn) { effects.push(fn); },
+  };
+  t.mock.method(globalThis, 'setTimeout', fn => { timers.set(++timerId, fn); return timerId; });
+  t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url, options });
+    if (!options) return { ok: true, json: async () => ({ ok: true, config: {}, revision: 'r1' }) };
+    return new Promise(resolve => { respond = resolve; });
+  });
+  const exports = descriptor.factory(() => react);
+  const render = () => { cursor = 0; refCursor = 0; return exports.SettingsForm(); };
+  const nodes = tree => {
+    if (Array.isArray(tree)) return tree.flatMap(nodes);
+    if (!tree || typeof tree !== 'object') return [];
+    return [tree, ...nodes(tree.children)];
+  };
+  const byLabel = (tree, label) => nodes(tree).find(node => node.props?.['aria-label'] === label);
+  const fireAutosave = () => { [...timers.values()].at(-1)(); return new Promise(resolve => setImmediate(resolve)); };
+
+  render();
+  await effects[0]();
+  await new Promise(resolve => setImmediate(resolve));
+  let tree = render();
+
+  // 四行都是 text 输入：空值即“自动”，不能渲染成 number 或布尔控件。
+  for (const label of ['ffmpeg 路径', 'CA 证书路径', 'ASR Python', 'ASR 模型目录']) {
+    const input = byLabel(tree, label);
+    assert.ok(input, `缺少运行时输入：${label}`);
+    assert.equal(input.type, 'input');
+    assert.equal(input.props.type, 'text');
+    assert.equal(input.props.className, 'blb-input');
+    assert.equal(input.props.value, '');
+  }
+  const text = JSON.stringify(tree);
+  for (const hint of ['留空 = 自动探测（含 Homebrew/系统路径）', 'Windows 上 ffmpeg 不读系统证书库时必填',
+    '留空 = 数据目录 venv 或 PATH', '留空 = 数据目录 models',
+    '保存后下一次调用生效；可用 node bin/bili.mjs doctor 验证。']) {
+    assert.ok(text.includes(hint), `缺少提示：${hint}`);
+  }
+  assert.ok(text.indexOf('视频理解') < text.indexOf('运行时路径'));
+  assert.ok(text.indexOf('运行时路径') < text.indexOf('开发者'));
+
+  // 输入路径：不做 Number()，且同一节流窗口内的两个字段合并成一个 patch。
+  byLabel(tree, 'ffmpeg 路径').props.onChange({ target: { value: '/opt/homebrew/bin/ffmpeg' } });
+  byLabel(render(), 'ASR Python').props.onChange({ target: { value: '/usr/bin/python3' } });
+  assert.equal(timers.size, 1, '两次输入应共用一个 500ms 定时器');
+  tree = render();
+  assert.equal(byLabel(tree, 'ffmpeg 路径').props.value, '/opt/homebrew/bin/ffmpeg');
+  await fireAutosave();
+  let request = requests.at(-1);
+  assert.equal(request.url, '/bilibili-bridge/api/settings');
+  assert.deepEqual(JSON.parse(request.options.body), {
+    runtime: { ffmpegPath: '/opt/homebrew/bin/ffmpeg', asrPython: '/usr/bin/python3' },
+    revision: 'r1',
+  });
+  respond({ ok: true, json: async () => ({ ok: true, config: {
+    runtime: { ffmpegPath: '/opt/homebrew/bin/ffmpeg', asrPython: '/usr/bin/python3' },
+  }, revision: 'r2' }) });
+  await new Promise(resolve => setImmediate(resolve));
+
+  // 清空 = 恢复自动探测；必须原样提交 ''，不能变成 null/undefined。
+  byLabel(render(), 'ffmpeg 路径').props.onChange({ target: { value: '' } });
+  await fireAutosave();
+  request = requests.at(-1);
+  assert.deepEqual(JSON.parse(request.options.body), { runtime: { ffmpegPath: '' }, revision: 'r2' });
+  assert.equal(JSON.parse(request.options.body).runtime.ffmpegPath, '');
+  respond({ ok: true, json: async () => ({ ok: true, config: { runtime: { ffmpegPath: '' } }, revision: 'r3' }) });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(byLabel(render(), 'ffmpeg 路径').props.value, '');
+});
 async function loadExports() {
   const descriptor = await loadClient();
   return descriptor.factory(() => fakeReact());

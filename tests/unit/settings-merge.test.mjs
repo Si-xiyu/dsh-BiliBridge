@@ -45,6 +45,42 @@ test('合并后的窗口关系与默认值',()=>{
  assert.deepEqual(mergeWritable({asr:{defaultWindowSeconds:90}},{asr:{defaultWindowSeconds:60,maxWindowSeconds:60}}).errors,[]);
  assert.deepEqual(mergeWritable({}, {asr:{defaultWindowSeconds:120}}).errors,[]);
 });
+test('runtime 段：四个运行路径可写，trim / 空串 / 类型与长度校验', () => {
+  const current = { note: 'keep', ffmpegPath: 'legacy/ffmpeg', asrPython: 'legacy/python', budget: { roundsLimit: 6, unknown: 'keep' }, runtime: { unknown: 'keep' } };
+  const result = mergeWritable(current, { runtime: { ffmpegPath: '  C:\\tools\\ffmpeg.exe  ', ffmpegCaFile: '  /etc/ssl/ca.pem  ', asrPython: ' /opt/py ', asrModelDir: '' } });
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.config.runtime, {
+    unknown: 'keep', ffmpegPath: 'C:\\tools\\ffmpeg.exe', ffmpegCaFile: '/etc/ssl/ca.pem', asrPython: '/opt/py', asrModelDir: '',
+  });
+  // 旧版平铺键和无关段原样保留（runtime 不是把它们搬走，而是并行存在）
+  assert.equal(result.config.ffmpegPath, 'legacy/ffmpeg');
+  assert.equal(result.config.asrPython, 'legacy/python');
+  assert.equal(result.config.note, 'keep');
+  assert.deepEqual(result.config.budget, { roundsLimit: 6, unknown: 'keep' });
+  assert.deepEqual(current.runtime, { unknown: 'keep' }, '不修改输入');
+
+  // 4096 可接受，4097 拒绝（按 trim 后长度）
+  const max = 'a'.repeat(4096);
+  assert.equal(mergeWritable({}, { runtime: { asrPython: max } }).config.runtime.asrPython, max);
+  for (const value of ['a'.repeat(4097), 1, null, undefined, true, [], {}, ['/x']]) {
+    const bad = mergeWritable({ runtime: { unknown: 'keep' } }, { runtime: { asrPython: value } });
+    assert.deepEqual(bad.errors, ['runtime.asrPython: 必须是不超过 4096 字符的字符串'], String(value));
+    assert.deepEqual(bad.config, { runtime: { unknown: 'keep' } }, '整份回滚');
+  }
+  // 控制字符（\t \n \x00 \x7f）一律拒绝，不做静默清洗
+  for (const value of ['a\u0000b', 'a\nb', 'a\tb', 'a\u007fb', '\u001b']) {
+    const bad = mergeWritable({}, { runtime: { asrPython: value } });
+    assert.deepEqual(bad.errors, ['runtime.asrPython: 不能包含控制字符'], JSON.stringify(value));
+  }
+  // 空串是合法值：保留键本身（等于“自动/缺省”，解析层不回落到旧键）
+  assert.deepEqual(mergeWritable({}, { runtime: { ffmpegPath: '  ' } }).config.runtime, { ffmpegPath: '' });
+
+  // 只改其它段时 runtime 与顶层旧键都不受影响
+  const unrelated = mergeWritable({ note: 'keep', ffmpegPath: 'legacy', runtime: { asrPython: '/opt/py' } }, { budget: { roundsLimit: 7 } });
+  assert.deepEqual(unrelated.config.runtime, { asrPython: '/opt/py' });
+  assert.equal(unrelated.config.ffmpegPath, 'legacy');
+  assert.deepEqual(mergeWritable({}, { runtime: 'x' }).errors, ['runtime: 必须是对象']);
+});
 test('loopback 与来源检查分支（宽松但仍是 fail closed）', () => {
   const ok = (headers, remote = '127.0.0.1') => trustedRequest({ socket: { remoteAddress: remote }, headers });
   // 同机：localhost 与 127.0.0.1 互通、端口差异不影响

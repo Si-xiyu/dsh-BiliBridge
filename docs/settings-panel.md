@@ -380,6 +380,10 @@ registerSettingsRoutes(ctx);
 | 视频理解 | `asr.defaultWindowSeconds` | 整数 10–120 | 30 |
 | 视频理解 | `asr.maxWindowSeconds` | 整数 30–600 | 300 |
 | 视频理解 | `ocr.enabled` | 布尔 | 开 |
+| 运行时路径 | `runtime.ffmpegPath` | 字符串；空 = 自动 | 空 |
+| 运行时路径 | `runtime.ffmpegCaFile` | 字符串；空 = 自动 | 空 |
+| 运行时路径 | `runtime.asrPython` | 字符串；空 = 自动 | 空 |
+| 运行时路径 | `runtime.asrModelDir` | 字符串；空 = 自动 | 空 |
 | 维护 | 清理缓存（asr / 画面 / 全部） | 按钮 | — |
 
 ### 12.4 参考实现（实机读过，非猜测）
@@ -424,4 +428,19 @@ registerSettingsRoutes(ctx);
 - 显式 `bilibili_comments`、`bilibili_inspect`、`bilibili_transcribe` 不受这五项限制，包括 inspect 的显式自适应选帧；仍遵守各自预算及 ASR/OCR 硬禁用设置。
 - **设置保存后下一次调用生效；代码更新需重启 DSH。**
 
-自动测试：`npm.cmd run test:single` 250/250；不代表真实 B 站取数或 DSH 宿主设置页验收完成。
+自动测试：`npm run test:single` 327（326 pass / 1 skip，skip 为 Windows ACL 专用）；不代表真实 B 站取数或 DSH 宿主设置页验收完成。
+
+## 14. 运行时路径（2026-11-11 实现）
+
+`config.json` 新增嵌套节 `runtime`，设置页对应「运行时路径」分组。可写键共 4 个：
+
+| 字段 | 默认（空） | 说明 |
+| --- | --- | --- |
+| `runtime.ffmpegPath` | 自动探测 | 留空 = 自动探测（含 Homebrew/系统路径） |
+| `runtime.ffmpegCaFile` | 自动 | Windows 上 ffmpeg 不读系统证书库时必填 |
+| `runtime.asrPython` | 自动 | 留空 = 数据目录 venv 或 PATH |
+| `runtime.asrModelDir` | 自动 | 留空 = 数据目录 models |
+
+- 四个值都是**字符串**（不转数字/布尔），服务端会 trim；**空串表示自动/默认**，不是“未设置”，前端会把 `''` 原样提交（不是 `null`/`undefined`）。
+- 设置页输入即自动保存（500ms 防抖，同窗口内多字段合并成一个 patch，携带 `revision`）；GET 返回 `{ config: { ..., runtime: {...} }, revision }`。
+- **保存后下一次调用生效**；改完可用 `node bin/bili.mjs doctor` 验证实际解析到的路径。

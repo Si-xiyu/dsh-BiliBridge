@@ -17,6 +17,8 @@
 - macOS 平台实现：Apple Vision OCR（首次 OCR 时用 `swiftc` 编译助手）、按平台解析 ASR 与 ffmpeg、
   自动使用系统 CA。
 - `node bin/bili.mjs doctor`：离线自检 7 项并支持 `--json`；必需项失败时退出码为 1。
+- 设置页新增「运行时路径」：ffmpeg、CA 证书、ASR Python、模型目录可直接编辑；留空=自动，
+  保存后下一次调用生效（`config.json` 的 `runtime` 段，旧版顶层键仍兼容）。
 - macOS/Windows 双平台 CI（`.github/workflows/platform-ci.yml`）：干净安装、sharp 原生模块、
   Windows 系统集成（pwsh/icacls）与单测。
 - `INSTALL.md`、`CHANGELOG.md` 加入包内 `files` 白名单；补充 `repository` 元数据。

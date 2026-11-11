@@ -152,6 +152,91 @@ test('UTF-8 response split across chunks is decoded and correlated', async () =>
   assert.equal((await job).text, '中文');
 });
 
+test('resetDaemon kills the current daemon and the next request respawns it', async () => {
+  const f = fixture();
+  const first = f.transcribeViaDaemon({ wavPath: 'a' });
+  await tick();
+  reply(f.children[0]);
+  await first;
+  assert.equal(f.children.length, 1);
+
+  f.resetDaemon();
+  assert.equal(f.children[0].killed, true, '旧 daemon 必须被杀掉');
+
+  const next = f.transcribeViaDaemon({ wavPath: 'b' });
+  await tick();
+  assert.equal(f.children.length, 2, '下一次转写必须重新 spawn');
+  assert.deepEqual(f.children[1].requests.map(request => request.wav), ['b']);
+  reply(f.children[1]);
+  await next;
+});
+
+test('resetDaemon cancels the in-flight request instead of leaving it hanging', async () => {
+  const f = fixture();
+  const job = f.transcribeViaDaemon();
+  await tick();
+  assert.equal(f.children[0].requests.length, 1);
+
+  f.resetDaemon();
+  await assert.rejects(job, (error) =>
+    code('CANCELLED')(error) && error.message === 'ASR 运行时已变更，守护进程已重启');
+  assert.equal(f.children[0].killed, true);
+
+  const next = f.transcribeViaDaemon();
+  await tick();
+  assert.equal(f.children.length, 2);
+  reply(f.children[1]);
+  await next;
+});
+
+test('resetDaemon during startup discards the process that was still launching', async () => {
+  let resolveRuntime;
+  const runtime = new Promise((resolve) => { resolveRuntime = resolve; });
+  const f = fixture(undefined, () => runtime);
+  const job = f.transcribeViaDaemon();
+  const rejected = assert.rejects(job, code('CANCELLED'));
+  await tick();
+
+  f.resetDaemon();
+  // 解析运行时是在 reset 之后才完成的：作废的启动不该再 spawn。
+  resolveRuntime({ python: 'fake', model: 'small', modelDir: 'models' });
+  await rejected;
+  assert.equal(f.children.length, 0);
+
+  const next = f.transcribeViaDaemon();
+  await tick();
+  assert.equal(f.children.length, 1);
+  reply(f.children[0]);
+  await next;
+});
+
+test('resetDaemon after the request was written marks it submitted（不可退款）', async () => {
+  const f = fixture();
+  const job = f.transcribeViaDaemon();
+  await tick();
+  assert.equal(f.children[0].requests.length, 1, '请求必须已经写进 stdin');
+
+  f.resetDaemon();
+  await assert.rejects(job, (error) =>
+    code('CANCELLED')(error) && error.data?.submitted === true);
+});
+
+test('resetDaemon before the request is written keeps it refundable（无 submitted）', async () => {
+  let resolveRuntime;
+  const runtime = new Promise((resolve) => { resolveRuntime = resolve; });
+  const f = fixture(undefined, () => runtime);
+  const job = f.transcribeViaDaemon();
+  const rejected = assert.rejects(job, (error) =>
+    code('CANCELLED')(error) && error.data === undefined);
+  await tick();
+
+  // 还在解析运行时：没有 daemon，更没有写过 stdin。
+  f.resetDaemon();
+  resolveRuntime({ python: 'fake', model: 'small', modelDir: 'models' });
+  await rejected;
+  assert.equal(f.children.length, 0);
+});
+
 test('abort during runtime resolution cannot later write or kill the next request', async () => {
   let resolveRuntime;
   const runtime = new Promise(resolve => { resolveRuntime = resolve; });
