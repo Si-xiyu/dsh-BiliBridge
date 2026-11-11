@@ -1,0 +1,40 @@
+name: release
+
+# 打 tag（v*）时：跑测试 → npm pack → 创建 GitHub Release 并附上 tarball。
+# 使用仓库内置 GITHUB_TOKEN，不需要维护者本地 token；权限只给 contents: write。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: clean install
+        run: npm ci --no-audit --no-fund
+
+      - name: unit tests
+        run: node --test --test-isolation=none --test-concurrency=1 tests/unit/*.test.mjs
+
+      - name: pack tarball
+        run: npm pack --pack-destination dist
+
+      - name: create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dsh-bilibili-bridge-*.tgz
+          generate_release_notes: true
+          fail_on_unmatched_files: true
