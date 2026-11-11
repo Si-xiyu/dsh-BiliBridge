@@ -31,6 +31,7 @@ node "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-bridge\bi
 ```
 
 登录：在 DSH 里说「登录 B站」扫码，或打开 **设置 → BiliBridge → 扫码登录**。
+如果用的是非默认 profile 或自定义 `DSH_HOME`，把命令里的 `desktop` / `~/.dsh` 换成实际值。
 
 没有 `dsh` 命令、想用链接安装，或需要完整的依赖矩阵与排障：见 [INSTALL.md](INSTALL.md)。
 

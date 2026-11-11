@@ -45,6 +45,7 @@
     "cordis.patch.yml",
     "README.md",
     "INSTALL.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "AGENT-INSTALL.md"
   ]
 }
