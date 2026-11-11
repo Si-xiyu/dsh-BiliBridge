@@ -1,0 +1,101 @@
+name: platform-ci
+
+# 目标：在 macOS 与 Windows 上验证「全新安装 → 原生模块 → 平台路径 → 系统交互 → 全量单测」。
+# 不接触真实账号、不请求 B站接口；网络只用于 npm 安装。
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: environment
+        shell: bash
+        run: |
+          node -v
+          npm -v
+          node -e "const os=require('node:os');const path=require('node:path');console.log(JSON.stringify({platform:process.platform,arch:process.arch,tmp:os.tmpdir(),sep:path.sep}))"
+
+      - name: clean install
+        run: npm ci --no-audit --no-fund
+
+      - name: native module (sharp)
+        shell: bash
+        run: node -e "const v=require('sharp').versions;console.log('sharp',v.sharp,'vips',v.vips,process.platform,process.arch)"
+
+      - name: macOS baseline probe (informational)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: node tests/clean-baseline.mjs | tee baseline.txt
+
+      - name: Windows system integration (pwsh + icacls + restrictFile)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP "bili-acl-probe.txt"
+          Set-Content -Path $probe -Value "probe"
+          icacls $probe /inheritance:r /grant:r "$($env:USERNAME):(F)"
+          if ($LASTEXITCODE -ne 0) { throw "icacls failed with exit $LASTEXITCODE" }
+          $acl = icacls $probe
+          Write-Output $acl
+          if ($acl -match 'BUILTIN\\Users') { throw "ACL still grants BUILTIN\\Users" }
+          node --input-type=module -e "import { writeFile } from 'node:fs/promises'; import { join } from 'node:path'; import { restrictFile } from './lib/bili/store.mjs'; const p = join(process.env.RUNNER_TEMP, 'restrict-probe.txt'); await writeFile(p, 'x'); await restrictFile(p); console.log('restrictFile ok');"
+
+      - name: unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:single 2>&1 | tee test.log
+
+      - name: summarize results
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## 单测结果（${{ matrix.os }}）"
+            echo ''
+            echo '```'
+            grep -E '^ℹ (tests|pass|fail|skipped|cancelled|todo)' test.log || echo 'no test log'
+            echo '```'
+            echo ''
+            echo '**未覆盖（CI 无法证明）**：DSH 宿主集成与工具注册、真实账号读写、ffmpeg 到 B站 CDN 的证书链、ASR/OCR 推理质量、GUI 进程 PATH 差异。'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.os }}
+          path: |
+            test.log
+            baseline.txt
+          if-no-files-found: ignore
+          retention-days: 7
