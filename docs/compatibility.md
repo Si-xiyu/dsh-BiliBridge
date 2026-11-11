@@ -49,7 +49,7 @@
 
 - `package.json` 的 `dsh.bundle.patch` 指向 `cordis.patch.yml`
 - profile 的 `package.json` 里登记依赖，`dsh.profile.bundles` 增加轮包
-- 开发时用 symlink 挂到 `~/.dsh/profiles/node_modules/`
+- 开发时用 symlink 挂到 `~/.dsh/profiles/desktop/node_modules/`
 - **改动 bundle 层后需要重启 DSH**；仅改插件 JS 是否热更新取决于宿主 HMR，未验证
 
 ## 已知限制

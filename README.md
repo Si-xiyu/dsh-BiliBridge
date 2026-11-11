@@ -6,15 +6,15 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 
 ## 当前状态
 
-完整状态见 [docs/state.md](docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](docs/capability-matrix.md)。
+完整状态见 [docs/state.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。宿主显示与审批路径仍待重启 DSH 后验收。见 [联合验收报告](docs/integration-review.md)。
+- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。宿主显示与审批路径仍待重启 DSH 后验收。见 [联合验收报告](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/integration-review.md)。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
 - 平台：Windows 与 macOS 走同一套代码，差异只在外部依赖（ffmpeg / OCR 引擎 / ASR 运行时）。
-  macOS 上 OCR 用系统自带的 Apple Vision，但首次需要 Xcode Command Line Tools（用 `swiftc` 编译一个 Vision 助手，之后按源码 hash 复用）；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](docs/macos-setup.md)。
+  macOS 上 OCR 用系统自带的 Apple Vision，但首次需要 Xcode Command Line Tools（用 `swiftc` 编译一个 Vision 助手，之后按源码 hash 复用）；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/macos-setup.md)。
 - 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。2026-11-10 又用真实账号完成评论、图文动态、私信的库层 E2E：评论/动态已回读并清理，私信成功发送并读回（留下一条测试消息）；21047 未在该会话触发（对方曾回复），错误透传由模拟与历史真实报错覆盖。宿主工具层与审批路径仍待重启 DSH 后验收。
-- P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
+- P0/P1 的接口、预算与验证边界见 [基础读写交付记录](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
 ## 外部依赖：ffmpeg（可选，但决定画面质量）
 
@@ -49,7 +49,7 @@ brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA �
 
 `extract.{subtitles,comments,danmaku,frames}` 是 `bilibili_extract` / `bilibili_collect` 的默认取数上限：设置与调用参数 `include` 是 AND 关系，`include=true` 不能重新开启设置关闭的来源。`adaptive.adaptiveEnabled` 只影响 Stage 1 自动补充九宫格。显式 `bilibili_comments`、`bilibili_inspect`、`bilibili_transcribe` 仍可使用，不受这五项限制，原有预算及 ASR/OCR 设置仍适用。
 
-**设置保存后下一次调用生效；代码更新需重启 DSH。** 字段与预设见 [设置面板第 13 节](docs/settings-panel.md#13-节能模式2026-11-10-实现)。
+**设置保存后下一次调用生效；代码更新需重启 DSH。** 字段与预设见 [设置面板第 13 节](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/settings-panel.md#13-节能模式2026-11-10-实现)。
 
 ## 工具
 
@@ -80,9 +80,11 @@ brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA �
 
 七个写工具（含 `bilibili_content_manage`）仅 `intent=apply` 在代码层走 `tools/pre-execute` 的 `ask`。发送类先 preview 获取绑定正文、目标和素材的 previewToken；结果不明返回 PENDING_CONFIRM，用同一工具的 check 核对，禁止盲目重发。删除/草稿操作同样先 preview 绑定目标，但使用独立的结果语义，不套发送账本。所有账号写请求共用最小间隔、失败退避与风控暂停；平台原话（如 21047）会原样返回。
 
-统一请求保护覆盖 API 读取与写入：跨进程间隔、账号小时/日额度、平台暂停与人工恢复；批量采集遇到风控立即停止。`node bin/bili.mjs traffic status` 离线查看预算与暂停状态。默认参数、review 修正、验证及媒体覆盖限制见 [风控保护交付总结](docs/risk-control-summary.md)。本地策略不能保证账号不被平台限制。
+统一请求保护覆盖 API 读取与写入：跨进程间隔、账号小时/日额度、平台暂停与人工恢复；批量采集遇到风控立即停止。`node bin/bili.mjs traffic status` 离线查看预算与暂停状态。默认参数、review 修正、验证及媒体覆盖限制见 [风控保护交付总结](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/risk-control-summary.md)。本地策略不能保证账号不被平台限制。
 
 ## 安装（开发版）
+
+面向用户的三步安装见 [INSTALL.md](INSTALL.md)；下面是开发态细节。
 
 开发态**必须用链接安装，不要用 `file:`**：pnpm 的 `file:` 依赖会按 `files` 字段把仓库拷贝进 `node_modules`，改仓库不会生效，必须重新 install；链接安装改完只需重启宿主。
 
@@ -91,7 +93,7 @@ Windows：
 ```powershell
 # 二选一：
 # a) 目录联接（推荐，改代码后重启宿主即可）
-cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridge" "E:\Code\dsh-BiliBridge"
+cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-bridge" "E:\Code\dsh-BiliBridge"
 # b) profile 里用 pnpm 的 link: 依赖（pnpm install 后生成符号链接）
 ```
 
@@ -102,7 +104,7 @@ cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridg
 "dsh": { "profile": { "bundles": [..., "dsh-bilibili-bridge"] } }
 ```
 
-macOS/Linux：`ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`，
+macOS/Linux：`ln -sfn <仓库> ~/.dsh/profiles/desktop/node_modules/dsh-bilibili-bridge`，
 依赖写成 `"link:/Users/<你>/Code/dsh-BiliBridge"`。
 
 > 已经用 `file:` 装的：改仓库后必须重新 `pnpm install`（或换成 `link:`），否则宿主加载的是旧拷贝。
@@ -144,7 +146,7 @@ node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 
 macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 
-只读工具的 endpoint、真实验收摘要与限制见 [能力矩阵](docs/capability-matrix.md)。手工脚本只输出分页信息和前两条样本；`--page` / `--page-size` 控制列表分页，动态用 `--offset` 续取，`--no-replies` 关闭楼中楼，`--anonymous` 验证无凭据状态。
+只读工具的 endpoint、真实验收摘要与限制见 [能力矩阵](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/capability-matrix.md)。手工脚本只输出分页信息和前两条样本；`--page` / `--page-size` 控制列表分页，动态用 `--offset` 续取，`--no-replies` 关闭楼中楼，`--anonymous` 验证无凭据状态。
 
 抓包探针需要 `playwright-core`（未列入依赖）：`npm i -D playwright-core`，或用 `PLAYWRIGHT_CORE` 指向它的入口文件。
 
@@ -158,7 +160,7 @@ macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 
 ## 已知限制
 
-- 自适应选帧默认启用，采用传统视觉特征、Haar 与 Facility Location；扫描和截图有耗时预算，失败降级。用法、配置及实测见 [自适应代表帧](docs/adaptive-frames.md)。视觉代表性不等于语义重要性。
+- 自适应选帧默认启用，采用传统视觉特征、Haar 与 Facility Location；扫描和截图有耗时预算，失败降级。用法、配置及实测见 [自适应代表帧](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/adaptive-frames.md)。视觉代表性不等于语义重要性。
 
 - 字幕必须走 WBI 签名的 `/x/player/wbi/v2`；不带签名的 `/x/player/v2` 会返回别的视频的 AI 字幕，不能使用。
 - 长字幕每页最多 800 条；将 `subtitles.nextCursor` 传回 `extract.subtitleCursor` 续取。轨道变化需从头读取；完整轨道覆盖率与本页范围分开返回。

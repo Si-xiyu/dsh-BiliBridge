@@ -14,6 +14,10 @@
     "bili": "bin/bili.mjs"
   },
   "description": "DSH plugin: Bilibili account tools for the main DeepSeek agent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Si-xiyu/dsh-BiliBridge.git"
+  },
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",
     "test:single": "node --test --test-isolation=none tests/unit/*.test.mjs"
@@ -39,6 +43,8 @@
     "lib",
     "bin",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "INSTALL.md",
+    "CHANGELOG.md"
   ]
 }
