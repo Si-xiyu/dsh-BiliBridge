@@ -98,3 +98,22 @@ Run: https://github.com/Si-xiyu/dsh-BiliBridge/actions/runs/43006377934
 
 **未覆盖（仍需真机/宿主）**：DSH 宿主集成与工具注册、真实账号读写、ffmpeg 到 B站 CDN 的证书链、
 ASR/OCR 推理质量、GUI 进程 PATH 差异。
+
+## 8. Stage 3 推送后的 CI 与一次偶发失败
+
+| Run | 触发 | 结果 |
+| --- | --- | --- |
+| 43008982901 | Stage 3 `feat(doctor)` (7781e78) | macOS ✅；Windows ❌（unit tests），其它步骤全过 |
+| 43009294154 | CI annotation 提交 (bd623d8) | macOS ✅；Windows ✅（同一批测试） |
+
+失败发生在 Windows 的 `unit tests` 步骤，公开 API 拿不到日志（下载日志需要仓库管理员权限）。
+重跑同一份测试即通过，因此判定为**偶发**，而不是代码回归；最可疑的是
+`tests/unit/traffic-guard.test.mjs` 的 `dispatched[1]-dispatched[0] >= 80` 时序断言
+（本机并行跑基线探针时也出现过一次，串行重跑即绿）。
+
+处理：
+- CI 的测试命令改为 `--test-concurrency=1`（文件级串行），降低 runner 上的调度抖动；
+- 增加失败 annotation 步骤，下次失败可以直接看到用例名，不必依赖日志下载权限。
+
+仍未解决：这只是降低概率，没有消除时序断言本身的敏感性；如果再次出现，考虑给该用例加
+重试或改为软断言，并单独记录。

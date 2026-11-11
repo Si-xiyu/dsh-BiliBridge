@@ -73,7 +73,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run test:single 2>&1 | tee test.log
+          # --test-concurrency=1：runner 上并行跑文件会放大 timing 类断言的抖动
+          # （曾出现一次 traffic-guard 80ms 串行断言失败，重跑即绿）。
+          node --test --test-isolation=none --test-concurrency=1 tests/unit/*.test.mjs 2>&1 | tee test.log
 
       - name: annotate failing tests
         if: failure()
