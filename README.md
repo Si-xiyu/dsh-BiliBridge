@@ -11,6 +11,8 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
 - 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。宿主显示与审批路径仍待重启 DSH 后验收。见 [联合验收报告](docs/integration-review.md)。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
+- 平台：Windows 与 macOS 走同一套代码，差异只在外部依赖（ffmpeg / OCR 引擎 / ASR 运行时）。
+  macOS 上 OCR 用系统自带的 Apple Vision，零安装；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](docs/macos-setup.md)。
 - 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。2026-11-10 又用真实账号完成评论、图文动态、私信的库层 E2E：评论/动态已回读并清理，私信成功发送并读回（留下一条测试消息）；21047 未在该会话触发（对方曾回复），错误透传由模拟与历史真实报错覆盖。宿主工具层与审批路径仍待重启 DSH 后验收。
 - P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
@@ -18,20 +20,28 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 
 `bilibili_inspect` 优先用 ffmpeg 从播放流精确抽帧；没有它，画面自动降级为 B站故事板（约 6–8 秒一格，读小字不行）。
 
-```powershell
-# 1) 放二进制（示例：gyan essentials 静态包）
-#    D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe
+```bash
+# macOS
+brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA 自动用 /etc/ssl/cert.pem
+```
 
-# 2) 让插件找到它（二选一）
+```powershell
+# Windows：放二进制（示例：gyan essentials 静态包）
+#    D:\tools\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe
+#
+# 让插件找到它（二选一）
 #    a. 写配置文件 %USERPROFILE%\.dsh\bilibili\config.json
 #       { "ffmpegPath": "D:/tools/ffmpeg/.../bin/ffmpeg.exe", "ffmpegCaFile": "C:/Users/<你>/.dsh/bilibili/cacert.pem" }
 #    b. 设环境变量 FFMPEG_PATH / FFMPEG_CA_FILE
-
-# 3) Windows 必须给 CA：该构建用 gnutls，不读系统证书库
+#
+# Windows 必须给 CA：该构建用 gnutls，不读系统证书库
 #    把 Mozilla 根证书存成 %USERPROFILE%\.dsh\bilibili\cacert.pem
 ```
 
-Linux/macOS 通常自带信任链，可以只设 `FFMPEG_PATH`。验证：`node tests/manual-frames.mjs BV1GJ411x7h7 auto`。
+查找顺序：`FFMPEG_PATH` → `config.json#ffmpegPath` → 平台常见位置（macOS 是 `/opt/homebrew/bin`、`/usr/local/bin`）
+→ `PATH`。macOS 的 GUI 进程 PATH 不含 Homebrew 目录，所以才需要那一步内置候选。
+
+验证：`node tests/manual-frames.mjs BV1GJ411x7h7 auto 10000 60000`。
 
 ## 视频取数（节能模式）
 

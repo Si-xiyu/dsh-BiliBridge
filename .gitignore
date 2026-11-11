@@ -7,3 +7,6 @@ node_modules/
 .cache/
 # codex 子任务用的 worktree（每个任务一个分支）
 .worktree/
+# Python 字节码（ASR 的 worker 一跑就会生成，且随解释器版本变）
+__pycache__/
+*.pyc

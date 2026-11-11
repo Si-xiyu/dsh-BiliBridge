@@ -25,14 +25,19 @@ const cid = video.pages[0].cid;
 console.log('video   :', video.title.slice(0, 40), `${video.duration}s`, 'cid', cid);
 console.log('plan    :', planSamples({ durationMs: video.duration * 1000, count }).map((ms) => `${Math.round(ms / 1000)}s`).join(' '));
 
-const result = await buildSubtitleTranscript({ video, cid, jar, samples: count, bandRatio: ratio });
+const result = await buildSubtitleTranscript({ video, cid, jar, samples: count, bandRatio: ratio, composeStrip: true });
 
 const dir = join(dataDir(), 'cache', video.bvid);
 await mkdir(dir, { recursive: true, mode: 0o700 });
 const stripFile = join(dir, `subtitle-strip-${cid}.jpg`);
 const textFile = join(dir, `subtitle-ocr-${cid}.json`);
-await writeFile(stripFile, result.strip.buffer, { mode: 0o600 });
-await writeFile(textFile, `${JSON.stringify({ bvid, cid, ...result, strip: undefined, stripPath: stripFile }, null, 2)}\n`, { mode: 0o600 });
+// 窗口模式下默认不拼长图（几百行会超 JPEG 高度上限），这里要留一张给人看，所以显式打开。
+if (result.strip.buffer) {
+  await writeFile(stripFile, result.strip.buffer, { mode: 0o600 });
+} else {
+  console.log('strip   : （本次没有拼长图，只保留逐帧识别结果）');
+}
+await writeFile(textFile, `${JSON.stringify({ bvid, cid, ...result, strip: undefined, stripPath: result.strip.buffer ? stripFile : null }, null, 2)}\n`, { mode: 0o600 });
 
 console.log('quality :', result.quality?.label ?? 'unknown');
 console.log('ocr     :', `language=${result.language}`, `recognized ${result.recognized}/${result.sampled}`);

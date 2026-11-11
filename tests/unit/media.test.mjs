@@ -294,7 +294,8 @@ test('OCR 连续重复行合并：只保留最早时间，并记录命中次数�
 });
 
 test('ffmpeg 不存在时抛 DEPENDENCY_MISSING，而不是静默降级', async () => {
-  // 隔离：数据目录里不能有 config.json（否则会真的找到 ffmpeg），PATH 也要清空。
+  // 隔离：数据目录里不能有 config.json（否则会真的找到 ffmpeg），PATH 也要清空，
+  // 并把常见安装位置置空——否则装了 Homebrew ffmpeg 的机器上这条永远“找得到”。
   const previousPath = process.env.FFMPEG_PATH;
   const previousData = process.env.BILI_DATA_DIR;
   const previousEnvPath = process.env.PATH;
@@ -303,7 +304,7 @@ test('ffmpeg 不存在时抛 DEPENDENCY_MISSING，而不是静默降级', async 
   process.env.PATH = '';
   resetFfmpegCache();
   try {
-    await assert.rejects(resolveToolchain(), (error) => error.code === 'DEPENDENCY_MISSING');
+    await assert.rejects(resolveToolchain({ knownBinaries: [] }), (error) => error.code === 'DEPENDENCY_MISSING');
   } finally {
     if (previousPath === undefined) delete process.env.FFMPEG_PATH;
     else process.env.FFMPEG_PATH = previousPath;

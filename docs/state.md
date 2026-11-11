@@ -5,6 +5,8 @@
 
 更新时间：2026-11-10（Asia/Shanghai）
 
+阶段：**27 个工具 + 跨平台**——基础读写 P0/P1、开发者模式、动态字段增强已并入；macOS 适配（Apple Vision OCR、按平台解析 ASR/ffmpeg，安装与验证见 [macos-setup.md](macos-setup.md)）合并在同一分支。交付与限制见 [read-write-rollout.md](read-write-rollout.md)。未改审批策略，未重启 DSH；以下较早的环境和验收记录保留历史日期，不代表新增工具已经完成宿主验收。
+
 最新：image-strip 已按用户要求回滚（原因：效果不好）。底部缩略图条、工具图片登记及本地图片列表/字节接口已移除；eco-mode、risk-control 和原有画面提取能力保留，27 个工具及原审批规则不变。本轮回滚测试结果见 [集成报告](integration-review.md)。没有重启 DSH 或新增真实账号操作，宿主显示/审批验收仍待执行。
 
 以下为各功能分支合入前的交付记录，保留当时测试数量与分支状态；当前集成状态以上文为准。
@@ -42,7 +44,6 @@
 - 宿主验收发现：草稿列表真实端点是 `dynamic_draft/get_drafts`（已修，真实空列表通过）；`add_draft` 真实调用返回 `4120015 系统异常`，定时动态创建仍未验收，立即发布不受影响。
 - **2026-11-10 真实 E2E（库层，真实账号 四夕羽_）**：稍后观看 add/remove 均 verified；收藏 `research` add/remove 均 verified；评论 `BV1KDNA6eEgr` SENT（rpid 323485773824）→ 已删除且列表不存在；图文动态 SENT（id 1268744613532794883，1 张图）→ 已删除、feed 不含；私信 260118260 SENT → 读回 found，同文再发返回 DUPLICATE；清理全部 verified。私信留下一条测试消息；21047 未在该会话触发（对方曾回复），仍由模拟与历史真实报错覆盖。删除动态后详情返回 `4101152 动态不可见`，已补映射为 `NOT_FOUND`。
 - **未做**：重启 DSH 后的宿主工具层/审批路径、真实定时动态创建（add_draft 4120015）、工具层动态图片附件、不同账号的真实 21047。
-
 ---
 
 ## 1. 这是什么
@@ -76,6 +77,24 @@ bin/bili.mjs  开发 CLI（登录、latest、watchlater、dry-run 写操作）
 
 **为什么 Windows 上必须给 CA**：gyan 的构建是 gnutls，且不读 Windows 证书库，直连 B站 CDN 会报
 `Peer certificate failed verification`。给 `-ca_file` 后正常；Node 侧不受影响（undici 自带信任链）。
+
+### 2.1 本机（macOS，`auto-dev-macos` 分支）
+
+| 项 | 值 |
+| --- | --- |
+| 主机 | macOS 26.6.2（25G83），arm64 |
+| Node | v25.8.0 |
+| 仓库 | `/Users/kairos/Code/agent/dsh-BiliBridge` |
+| 数据目录 | `~/.dsh/bilibili` |
+| ffmpeg | **9.0.2（Homebrew）**，`/opt/homebrew/bin/ffmpeg`；命中内置候选，无需写 `ffmpegPath` |
+| CA | **不需要手工放**：自动用 `/etc/ssl/cert.pem`（Homebrew 的 ffmpeg 是 `--enable-openssl`，同样不带根证书） |
+| OCR | **Apple Vision**，首次使用时 `swiftc` 编译到 `~/.dsh/bilibili/bin/bili-ocr-vision`（零运行时依赖） |
+| ASR 运行时 | **faster-whisper 1.2.1**（Python 3.12.16 venv：`~/.dsh/bilibili/asr-venv`，模型 `~/.dsh/bilibili/models`，默认 `small`） |
+| HF 镜像 | **必须**：本机 `huggingface.co` 15s 超时不可达；`config.json#hfEndpoint="https://hf-mirror.com"` |
+| 依赖获取 | Homebrew 走 `HOMEBREW_BOTTLE_DOMAIN` 清华镜像，pip 走 TUNA 镜像（仅安装期，不进代码） |
+
+安装与验证步骤见 [macos-setup.md](macos-setup.md)。**注意 GUI 进程的 PATH 不含 `/opt/homebrew/bin`**，
+所以 `resolveToolchain` 把 `/opt/homebrew/bin/ffmpeg`、`/usr/local/bin/ffmpeg` 也列为候选。
 
 ## 3. 现在能做什么
 
@@ -135,7 +154,9 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 
 ### 4.3 单测
 
-`npm test` → **97/97**（媒体 6 条：playurl 选档/缓存/缺流、故事板间距、ffmpeg 缺失；存储 6 条：BOM 解析、fallback、数据目录优先级、原子写、Windows ACL）。
+`npm test` → **143/143**（跳过 1 条 Windows 专用 ACL 断言：POSIX 上由 `chmod 0600` 负责）。
+除媒体/存储/写入/设置外，`tests/unit/platform.test.mjs` 覆盖平台分派：OCR 引擎选择、
+ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单、HF 镜像注入。
 
 ### 4.5 Stage 2 宿主内验收（2026-11-02 重启后）
 
@@ -201,7 +222,9 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 覆盖度拆成两个指标，别混用：
   - `subtitles.coverage`：**区间并集 / 时长**（句子之间的气口会算进去，正常视频 0.95–0.99）。
   - `subtitles.coveredToMs` 与状态判定用的 extent：**完整字幕轨末端 / 时长**（判"轨道有没有断在中间"）。
-- "只返回前 800 条"是第三件事，用 `truncated` + `SUBTITLE_TRUNCATED` 单独提示，不并进 `partial`。
+- 单页最多 800 条：超页用 `truncated` + `SUBTITLE_TRUNCATED` 单独提示，不并进 `partial`；
+  续取走 `subtitles.nextCursor`（绑 bvid/cid/语言/完整字幕指纹），`coverage` 始终是完整轨道覆盖率，
+  `returnedRange` 是本页范围，两者分开返回。
 - 新增线索字段：`gaps[]`（`no_subtitles` / `subtitles_partial` / `no_danmaku` / `no_comments` / `no_visual`）、
   `suggestedWindows[]`（弹幕密度峰值前 3，纯计算）、`evidenceLevel`（`rich` / `text-only` / `thin`）。
 - `schemaVersion` 升到 `2`。实测：有字幕视频 411ms（level=rich）、无字幕视频 831ms（level=text-only）。
@@ -301,8 +324,44 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 - 接口：`GET /dev/log?since=&limit=`（同样做来源校验，关闭时返回空）、`POST /dev/clear`。
 - 记录不阻塞工具返回：内存先记、落盘走后台队列。
 
-### 写入门禁（B 线合并后调整）
+## 5.11 macOS 适配（2026-11-04，分支 `auto-dev-macos`）
 
+目标：让 Windows 上验证过的能力在 macOS 上**等价可用**，而不是另起一套实现。
+
+| 改动 | 位置 | 原因 |
+| --- | --- | --- |
+| OCR 引擎分派 | `lib/media/ocr.mjs#ocrEngineFor` | 原来硬编码 `process.platform !== 'win32'` 直接 `UNSUPPORTED` |
+| Apple Vision 助手 | `lib/media/vision-ocr.swift` + `vision-ocr.mjs` | Vision 只能从 Swift 调用；首次 `swiftc -O` 编译到数据目录，按源码 sha256 复用，单图约 160ms |
+| OCR 可用性探测 | `ocrAvailability()` | 设置页与工具可**提前**判断，不必拼完长图才失败 |
+| ASR 解释器解析 | `lib/media/asr.mjs#asrCandidates` | 原来写死 `D:/tools/asr/.venv/Scripts/python.exe`，且 `existsSync` 会否掉裸命令名 |
+| HF 镜像配置 | `config.json#hfEndpoint` → `asrEnv` | 本机 `huggingface.co` 不可达；GUI 进程加不了环境变量 |
+| ffmpeg 系统 CA | `lib/media/ffmpeg.mjs#SYSTEM_CA_CANDIDATES` | Homebrew 的 ffmpeg 是 openssl 构建，同样不带根证书 |
+| ffmpeg 内置候选 | `KNOWN_BINARIES` | GUI 进程 PATH 不含 `/opt/homebrew/bin`，终端里能找到、宿主里找不到 |
+| ffmpeg 缺失提示 | `resolveToolchain` | 按平台给安装建议 |
+| 设置页文案 | `lib/client.js` | 显示实际引擎与不可用原因 |
+
+本机实测（2026-11-04）：
+
+- 抽帧：`source=ffmpeg`、`accuracy=frame-level`、`maxErrorMs=null`、1080P，CA 取自 `/etc/ssl/cert.pem`
+- OCR：真实 1080P 视频 6 个采样点识别到 4 条中英字幕，文本与画面一致；单图约 160ms（编译后）
+- ASR：faster-whisper 1.2.1 + `small`，模型经 `hf-mirror.com` 拉取（先卡在 hub 的 Xet 传输上，
+  改用 curl 断点续传写入 HF 缓存布局后可用）
+  - 20s 窗口：新进程 11–14s（含取流、抽音频、模型加载）
+  - 40s 窗口：新进程约 109s；同进程冷启 118s、复用 94s
+  - **比 Windows 机器慢**（那头 90s 音频 55.7s，约 1.6× 实时；这里 40s 音频 94s，约 0.4× 实时）。
+    当时机器负载较高（DeepSeek 桌面端等在跑），且 `beam_size=5`、`cpu_threads` 未调优 —— 列为待办，不作性能结论
+- 单测：143/143（跳过 1 条 Windows 专属 ACL 用例）
+
+合并 `auto-dev`（25 工具）后在本机复验（2026-11-06）：
+
+- `npm test` 185 项（184 通过 / 1 条 Windows 专属跳过）
+- `tests/manual-foundation.mjs public`：25 个工具注册；popular / hotwords / weekly / rank / search 全 ok
+- `... account`：unread / replies / at / likes / messages / 收藏夹（19 个）/ 投稿 / 主页全 ok
+- `... text`：字幕分页 800 + 776 条续取、弹幕窗口、批量采集（partial=false）全 ok
+- 抽帧、Apple Vision OCR、ASR 解释器解析、设置页 `readStatus()` 三项运行时复验通过
+- 新增的 6 个工具都是纯 HTTP，脚本里没有平台假设；`publish.mjs` 读本机图片走 sharp + 文件句柄，macOS 同样可用（未做真实发送）
+
+## 5.12 写入门禁（B 线合并后调整）
 - **所有非 GET 请求都进 `limitedWrite`**；缺账号时直接 `AUTH_REQUIRED`，不再静默放行。
 - 进入 `effect` 之前的失败（凭证不足、状态文件损坏、抢锁超时、建目录失败）统一标 `submission=not-submitted`，
   发送账本因此记 `FAILED` 而不是 `PENDING_CONFIRM`；已进入发送的失败原样上抛。
@@ -316,6 +375,11 @@ image    : 39303 bytes -> ~/.dsh/bilibili/cache/BV1GJ411x7h7/inspect-*.jpg
 4. **长视频整片转写**：不设默认入口；用户显式授权后再考虑。
 5. **`docs/agents.md`**：子任务分工、worktree 流程与评审约定，尚未写。
 6. **OCR 缓存接入 inspect**：接口已备（`readOcrCache`/`writeOcrCache`），窗口 OCR 还没用上。
+7. **macOS 上的 ASR 性能**：本机实测约 0.4× 实时，明显慢于 Windows 机器。待查：`cpu_threads`
+   是否吃满性能核、`beam_size` 是否能降到 3、是否被其它进程抢占；确认前不调默认值。
+8. **宿主内验收**：macOS 这一轮的抽帧/OCR/ASR 都是独立进程验证，**尚未重启 DSH 在宿主内复验**
+   （插件无 HMR，重启后才会加载新代码与 `/bilibili-bridge/api/*` 路由）。
+
 ## 7. 环境注意事项
 
 - **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。
@@ -368,6 +432,7 @@ node tests/manual-read.mjs comments BV1VZWc6dECG --sort hot
 | 文件 | 性质 |
 | --- | --- |
 | `docs/state.md` | **当前状态（本文件）** |
+| `docs/macos-setup.md` | macOS 上的 ffmpeg / OCR / ASR 安装与验证 |
 | `docs/capability-matrix.md` | 每个工具的真实 endpoint、验证等级、边界 |
 | `docs/plan.md` | 里程碑与门禁 |
 | `docs/compatibility.md` | 宿主版本、插件加载方式、平台限制 |
