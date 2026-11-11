@@ -37,12 +37,14 @@ try {
 }
 
 const result = await buildInspection({ video, cid, timestampsMs: timestamps, source, jar });
-console.log('frames   :', result.image.source, result.image.accuracy, 'maxErrorMs', result.image.maxErrorMs, 'count', result.frames.length);
+const image = result.images?.[0];
+if (!image) throw new Error(`没有返回图片：${JSON.stringify(result.fallbackReason ?? null)}`);
+console.log('frames   :', image.source, image.accuracy, 'maxErrorMs', image.maxErrorMs, 'count', result.frames.length);
 console.log('detail   :', result.frames.map((frame) => `${frame.requestedMs}->${frame.actualMs}${frame.reused ? '(reused)' : ''}`).join(' '));
-console.log('image    :', result.image.buffer.byteLength, 'bytes ->', result.image.path);
+console.log('image    :', image.buffer?.byteLength ?? '?', 'bytes ->', image.path ?? '(inline)');
 if (result.fallbackReason) console.log('fallback :', result.fallbackReason.code, result.fallbackReason.message);
 
-if (source === 'ffmpeg' && result.image.source !== 'ffmpeg') {
-  console.error('期望 ffmpeg 抽帧，实际降级到了', result.image.source);
+if (source === 'ffmpeg' && image.source !== 'ffmpeg') {
+  console.error('期望 ffmpeg 抽帧，实际降级到了', image.source);
   process.exitCode = 1;
 }

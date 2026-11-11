@@ -382,7 +382,8 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 
 ## 7. 环境注意事项
 
-- **ffmpeg 是外部依赖**：换机器要重新放二进制并更新 `config.json`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）。
+- **ffmpeg 是外部依赖**：Windows 需要放二进制并写 `config.json#ffmpegPath`（或设 `FFMPEG_PATH`/`FFMPEG_CA_FILE`）；
+  macOS 上会自动找 Homebrew 的 `/opt/homebrew/bin`、`/usr/local/bin` 并从系统证书包取 CA，通常无需配置。
   没有它插件照常工作，只是画面降级为故事板（会明确标 `source=storyboard`）。
 - **E: 盘只剩约 6.4GB**：模型、二进制、媒体缓存放 D:，不要放仓库盘。
 - **sharp 渲染 SVG 文字需要可写的 fontconfig 缓存**：受限进程里会报 `No writable cache directories`；
@@ -396,8 +397,8 @@ ASR 解释器候选顺序、裸命令名不当作路径、系统 CA 兜底清单
 | 项 | 做什么 | 漏了会怎样 |
 | --- | --- | --- |
 | npm 依赖 | `npm install`（`sharp`、`qrcode`） | 插件加载失败 / 图片合成不可用 |
-| ffmpeg | 放二进制，写 `config.json#ffmpegPath`（或 `FFMPEG_PATH`） | 画面降级故事板，`inspect` 精度 ±3s |
-| CA 证书 | `cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`） | Windows 上 ffmpeg 连 CDN 报证书失败，同样降级 |
+| ffmpeg | Windows：放二进制并写 `config.json#ffmpegPath`；macOS：`brew install ffmpeg` 后自动发现 | 画面降级故事板，精度以返回的 `maxErrorMs` 为准 |
+| CA 证书 | Windows：`cacert.pem` 放数据目录（或 `FFMPEG_CA_FILE`）；macOS：自动用系统证书包 | ffmpeg 连 CDN 报证书失败，同样降级 |
 | B站登录 | 重新扫码（或复制 `credentials.json`，但新 IP 可能触发风控） | 字幕 0 条、稍后观看/收藏全部 `AUTH_REQUIRED` |
 | profile 接线 | `desktop/node_modules/dsh-bilibili-bridge` junction + `package.json` 的 `dependencies` / `dsh.profile.bundles` | 宿主无法加载插件；本轮合并后应为 27 个工具 |
 | 重启宿主 | 插件没有 HMR | 改动不生效，容易出现“脚本结论和宿主不一致” |

@@ -12,7 +12,7 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 - 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。宿主显示与审批路径仍待重启 DSH 后验收。见 [联合验收报告](docs/integration-review.md)。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
 - 平台：Windows 与 macOS 走同一套代码，差异只在外部依赖（ffmpeg / OCR 引擎 / ASR 运行时）。
-  macOS 上 OCR 用系统自带的 Apple Vision，零安装；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](docs/macos-setup.md)。
+  macOS 上 OCR 用系统自带的 Apple Vision，但首次需要 Xcode Command Line Tools（用 `swiftc` 编译一个 Vision 助手，之后按源码 hash 复用）；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](docs/macos-setup.md)。
 - 写操作：点赞有历史真实验证；收藏与稍后观看已完成真实加入/移除往返并恢复。2026-11-10 又用真实账号完成评论、图文动态、私信的库层 E2E：评论/动态已回读并清理，私信成功发送并读回（留下一条测试消息）；21047 未在该会话触发（对方曾回复），错误透传由模拟与历史真实报错覆盖。宿主工具层与审批路径仍待重启 DSH 后验收。
 - P0/P1 的接口、预算与验证边界见 [基础读写交付记录](docs/read-write-rollout.md)。不包含视频投稿或 Opus。
 
@@ -84,22 +84,29 @@ brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA �
 
 ## 安装（开发版）
 
-Windows（当前环境）：
+开发态**必须用链接安装，不要用 `file:`**：pnpm 的 `file:` 依赖会按 `files` 字段把仓库拷贝进 `node_modules`，改仓库不会生效，必须重新 install；链接安装改完只需重启宿主。
+
+Windows：
 
 ```powershell
-# 1) 把插件挂进 profile 的 node_modules
-#    推荐在 profile 里用 file: 依赖，让 pnpm 建链接；也可手工建目录联接：
+# 二选一：
+# a) 目录联接（推荐，改代码后重启宿主即可）
 cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-bilibili-bridge" "E:\Code\dsh-BiliBridge"
+# b) profile 里用 pnpm 的 link: 依赖（pnpm install 后生成符号链接）
 ```
 
 在 `%USERPROFILE%\.dsh\profiles\desktop\package.json` 里：
 
 ```json
-"dependencies": { "dsh-bilibili-bridge": "file:E:/Code/dsh-BiliBridge" },
+"dependencies": { "dsh-bilibili-bridge": "link:E:/Code/dsh-BiliBridge" },
 "dsh": { "profile": { "bundles": [..., "dsh-bilibili-bridge"] } }
 ```
 
-macOS/Linux：把上面的 `mklink /J` 换成 `ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`。
+macOS/Linux：`ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge`，
+依赖写成 `"link:/Users/<你>/Code/dsh-BiliBridge"`。
+
+> 已经用 `file:` 装的：改仓库后必须重新 `pnpm install`（或换成 `link:`），否则宿主加载的是旧拷贝。
+> **重启宿主只对链接安装有效。**
 
 合并本轮分支并重启 DSH 后，新会话应能看到 27 个 `bilibili_*` 工具；新增工具的宿主验收仍待此步骤。**插件没有 HMR，改 `lib/` 必须重启宿主。**
 
@@ -132,7 +139,7 @@ macOS/Linux 用 `BILI_DATA_DIR=./.bili-data node ...` 的写法。
 - 凭据只允许当前用户访问（POSIX 0600；Windows 用 icacls 关继承、只授权当前用户）；工具返回值、日志、报告不出现 Cookie / CSRF / 刷新凭据。
 - 所有 B站请求（含图片/字幕/弹幕/DASH 流）走 `lib/bili/http.mjs`：一套 UA/Referer，域名白名单，禁止内网地址。
 - 不实现自动刷视频、人格、主动分享。
-- 故事板精度约 ±1s；读小字需要 ffmpeg。
+- 故事板精度以返回的 `maxErrorMs` 为准（通常数秒）；读小字需要 ffmpeg。
 
 ## 已知限制
 
