@@ -75,6 +75,17 @@ jobs:
           set -o pipefail
           npm run test:single 2>&1 | tee test.log
 
+      - name: annotate failing tests
+        if: failure()
+        shell: bash
+        run: |
+          # 公开仓库拿不到 job 日志时，annotation 是唯一可公开读取的失败线索。
+          if [ ! -f test.log ]; then echo "::error::test.log 不存在，单测步骤可能没跑起来"; exit 0; fi
+          grep -E '^✖ ' test.log | head -20 | while IFS= read -r line; do
+            echo "::error::${line#✖ }"
+          done
+          echo "::notice::失败详情见 artifact logs-${{ matrix.os }}"
+
       - name: summarize results
         if: always()
         shell: bash
