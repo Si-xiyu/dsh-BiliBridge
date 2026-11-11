@@ -4,6 +4,36 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 
 本项目采用 [MIT 许可证](LICENSE)，Copyright (c) 2026 Si-xiyu。第三方依赖遵循各自的许可证。
 
+## Quickstart
+
+需要 DSH 桌面版（`engines.dsh` 在 `>=0.1.0-rc.6 <0.3.0` 内）。ffmpeg、Python + faster-whisper、OCR 都是可选依赖，缺了会明确降级，不影响插件启动。
+
+安装（macOS / Linux / Windows 通用，DSH 插件管理器的标准写法）：
+
+```bash
+dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
+```
+
+也可以直接从仓库装（开发态）：
+
+```bash
+dsh plugin --profile desktop add github:Si-xiyu/dsh-BiliBridge
+```
+
+重启 DSH（bundle 层需要重启一次），然后跑自检：
+
+```bash
+# macOS / Linux
+node ~/.dsh/profiles/desktop/node_modules/dsh-bilibili-bridge/bin/bili.mjs doctor
+
+# Windows（PowerShell）
+node "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-bridge\bin\bili.mjs" doctor
+```
+
+登录：在 DSH 里说「登录 B站」扫码，或打开 **设置 → BiliBridge → 扫码登录**。
+
+没有 `dsh` 命令、想用链接安装，或需要完整的依赖矩阵与排障：见 [INSTALL.md](INSTALL.md)。
+
 ## 当前状态
 
 完整状态见 [docs/state.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/state.md)，工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/capability-matrix.md)。
