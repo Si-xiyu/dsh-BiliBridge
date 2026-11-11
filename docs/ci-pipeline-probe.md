@@ -74,3 +74,27 @@ Run: https://github.com/Si-xiyu/dsh-BiliBridge/actions/runs/42993947264
 | 2 | 修正后复审 | 6 条 findings（单测数量越权声明、复审通过无证据、P0 清单指向错误、路径数量不符、"重装或重启"过于笼统、pyc 触发描述过强） | 全部修正 |
 
 说明：codex 走代理可用，单轮 review 约 3–4 分钟、3–4 万 tokens；`subagent_codex` 仍不可用（宿主无代理）。
+
+## 7. 正式 CI 首跑（Stage 2）
+
+工作流：`.github/workflows/platform-ci.yml`，分支 `feat/platform-bootstrap`，push 触发。
+
+Run: https://github.com/Si-xiyu/dsh-BiliBridge/actions/runs/43006377934
+
+| 步骤 | macos-latest | windows-latest |
+| --- | --- | --- |
+| checkout / setup-node 24 / npm 缓存 | ✅ | ✅ |
+| `npm ci` | ✅ | ✅ |
+| sharp 原生模块 | ✅ | ✅ |
+| macOS 基线探针（信息性） | ✅ | 跳过（仅 macOS） |
+| 真实 pwsh + icacls + `restrictFile` | 跳过（仅 Windows） | ✅ |
+| `npm run test:single` | ✅ | ✅ |
+| 结果汇总（pass/fail/skip/未覆盖） | ✅ | ✅ |
+| 失败日志上传 | 跳过（仅失败时） | 跳过（仅失败时） |
+
+- 总耗时 43 秒（10:46:13Z → 10:46:56Z，两个 job 并行）。
+- 没有失败步骤，因此没有失败原因需要记录；本轮也没有触发 artifact 上传。
+- job summary 已写入 pass/fail/skip 与"未覆盖"清单；公开 API 看不到日志正文，具体计数以 summary 为准。
+
+**未覆盖（仍需真机/宿主）**：DSH 宿主集成与工具注册、真实账号读写、ffmpeg 到 B站 CDN 的证书链、
+ASR/OCR 推理质量、GUI 进程 PATH 差异。
