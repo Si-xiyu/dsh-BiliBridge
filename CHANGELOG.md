@@ -45,5 +45,6 @@
 - GitHub Release：tag 触发 `.github/workflows/release.yml` 自动构建并附 tarball。
 - 定时草稿**创建**仍返回平台错误 `4120015`（未验收）；列表/删除/立即发布已实现，立即发布不受该错误影响。
 - Windows 真机本轮未复验；Linux 未在真实机器验证（OCR 未接入，其余能力走同一套代码）。
-- CI 稳定性：Windows runner 曾出现一次 traffic-guard 时序断言偶发失败（重跑即绿）；
-  已改 `--test-concurrency=1` 降低概率，未根除。
+- CI 稳定性：Windows runner 的 traffic-guard 时序断言曾偶发失败；根因是间隔按“预留时刻”
+  计算、实际 dispatch 在落盘后（Windows 写盘抖动会吃掉少量时间）。断言已改为容忍
+  dispatch 抖动（≥60ms，预留语义仍是 80ms），并把 CI 测试改为文件级串行。

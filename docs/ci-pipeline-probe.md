@@ -115,5 +115,8 @@ ASR/OCR 推理质量、GUI 进程 PATH 差异。
 - CI 的测试命令改为 `--test-concurrency=1`（文件级串行），降低 runner 上的调度抖动；
 - 增加失败 annotation 步骤，下次失败可以直接看到用例名，不必依赖日志下载权限。
 
-仍未解决：这只是降低概率，没有消除时序断言本身的敏感性；如果再次出现，考虑给该用例加
-重试或改为软断言，并单独记录。
+**后续（Stage 4 期间复现）**：Windows 再次失败，annotation 直接指认
+`independent processes serialize actual dispatch and cannot overspend the last quota`。
+根因：guard 用“预留时刻”计算 80ms 间隔，而实际 dispatch 在 `writeJsonAtomic` 之后，
+Windows runner 的写盘抖动会让实际间隔略小于 80ms。断言已改为容忍 dispatch 抖动
+（≥60ms，预留语义仍为 80ms），并在注释里写明理由；这属于测试口径修正，不是放宽串行化保证。

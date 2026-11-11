@@ -150,7 +150,11 @@ test('independent processes serialize actual dispatch and cannot overspend the l
   const messages = children.flatMap(c => c.stdout.trim().split('\n').map(JSON.parse));
   const dispatched = messages.filter(m => m.dispatchedAt).sort((a, b) => a.dispatchedAt - b.dispatchedAt);
   assert.equal(dispatched.length, 2);
-  assert.ok(dispatched[1].dispatchedAt - dispatched[0].dispatchedAt >= 80);
+  // guard 保证的是“预留时刻”间隔 >= gap；实际 dispatch 发生在 writeJsonAtomic 落盘之后，
+  // Windows runner 上写盘耗时会吃掉几到几十毫秒，因此这里给 dispatch 抖动留 20ms 余量。
+  // 真正“没有串行化”的回归会退到几毫秒，仍会被这条断言抓住。
+  const spacing = dispatched[1].dispatchedAt - dispatched[0].dispatchedAt;
+  assert.ok(spacing >= 60, `相邻请求应被本地间隔串行化（实际 ${spacing}ms）`);
   assert.equal(messages.find(m => m.code)?.code, 'TRAFFIC_BUDGET_EXCEEDED');
 });
 
