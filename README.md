@@ -110,6 +110,21 @@ macOS/Linux：`ln -sfn <仓库> ~/.dsh/profiles/node_modules/dsh-bilibili-bridge
 
 合并本轮分支并重启 DSH 后，新会话应能看到 27 个 `bilibili_*` 工具；新增工具的宿主验收仍待此步骤。**插件没有 HMR，改 `lib/` 必须重启宿主。**
 
+## 安装自检（doctor）
+
+装好依赖后先跑一次离线自检：
+
+```bash
+node bin/bili.mjs doctor          # 人读表格
+node bin/bili.mjs doctor --json   # 机器可读（CI / 脚本）
+```
+
+检查 7 项：`runtime`（Node / 平台 / 插件版本 / 模块路径 / 工具数）、`ffmpeg`、`ASR`、`sharp`、`OCR`、
+`storage`（数据目录可写、凭据 0600、config 可解析）、`login`（离线读凭据，不联网）。
+**必需项是 runtime 与 storage**：失败时退出码为 1；ffmpeg / ASR / OCR / sharp 缺失只标注，
+不阻断插件启动（会按既有语义明确降级）。设置页状态接口同时返回 `identity`（版本、模块路径、工具数），
+可用来确认宿主加载的是哪一份代码。存储检查会按需创建数据目录并写一个临时文件（随即删除），其余检查只读、不联网。
+
 ## 开发 CLI
 
 ```powershell

@@ -393,3 +393,13 @@ test('dev settings accept booleans and reject other values', async () => {
   assert.equal(result.code, 200);
   assert.equal(result.result.config.dev.enabled, true);
 });
+
+test('settings/reset 对非可信来源返回 403 且带原因（回归：未定义函数曾导致 500）', async () => {
+  const routes = operationRoutes();
+  const reset = routes.get('settings/reset');
+  const rejected = await call(reset, { method: 'POST', body: '{}', headers: {} });
+  assert.equal(rejected.code, 403);
+  assert.equal(rejected.result.error, 'FORBIDDEN');
+  assert.equal(typeof rejected.result.reason, 'string');
+  assert.equal((await call(reset, { method: 'GET' })).code, 405);
+});

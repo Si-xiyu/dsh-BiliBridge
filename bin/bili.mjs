@@ -3,6 +3,7 @@
  * dsh-BiliBridge 开发 CLI：不经过 DSH，直接验证 B站核心。
  *
  *   node bin/bili.mjs status
+ *   node bin/bili.mjs doctor [--json] 安装自检（离线）
  *   node bin/bili.mjs qr             生成二维码 PNG，供聊天里展示
  *   node bin/bili.mjs poll [seconds] 轮询扫码结果
  *   node bin/bili.mjs login          终端二维码 + 阻塞等待（本地开发用）
@@ -30,6 +31,7 @@ import {
 } from '../lib/bili/collections.mjs';
 import { dataDir, readJson, writeJsonAtomic } from '../lib/bili/store.mjs';
 import { trafficGuard } from '../lib/bili/traffic-guard.mjs';
+import { collectDiagnostics } from '../lib/diagnostics.mjs';
 
 const argv = process.argv.slice(2);
 const command = argv[0];
@@ -42,6 +44,17 @@ function print(value) {
   console.log(JSON.stringify(value, null, 2));
 }
 
+/** doctor 的人读表格；--json 仍走 print()。 */
+function renderDoctor({ sections, summary, ok }) {
+  const status = (item) => (item.code === 'SKIPPED' ? 'SKIP' : item.ok ? ' OK ' : 'FAIL');
+  const lines = sections.map((item) =>
+    `[${status(item)}] ${item.id.padEnd(8)} ${item.label}：${item.detail}`);
+  lines.push('');
+  lines.push(`通过 ${summary.pass} · 失败 ${summary.fail} · 跳过 ${summary.skipped} · 必需失败 ${summary.requiredFailed}`);
+  lines.push(ok ? '安装自检通过：必需项全部可用。' : '安装自检未通过：请先修复必需项（runtime / storage）。');
+  return lines.join('\n');
+}
+
 function pendingPath() {
   return join(dataDir(), 'pending-login.json');
 }
@@ -49,6 +62,7 @@ function pendingPath() {
 function usage() {
   console.log(`用法:
   status                         登录态与数据目录
+  doctor [--json]                安装自检：运行时/ffmpeg/ASR/sharp/OCR/存储/登录（离线）
   traffic status                 本地请求预算与暂停状态（不联网）
   traffic resume --go             完成人工验证后确认恢复（保留暂停与预算）
   qr                             生成登录二维码 PNG（print 路径）
@@ -86,6 +100,15 @@ async function main() {
 
     case 'status':
       return print(await status());
+
+    case 'doctor': {
+      const result = await collectDiagnostics();
+      if (flags.has('--json')) print(result);
+      else console.log(renderDoctor(result));
+      // 只有必需项失败才让脚本/CI 失败；可选能力缺失不阻断安装。
+      process.exitCode = result.ok ? 0 : 1;
+      return undefined;
+    }
 
     case 'traffic': {
       const { jar } = await currentJar();

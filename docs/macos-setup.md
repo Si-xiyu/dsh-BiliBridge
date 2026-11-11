@@ -25,6 +25,17 @@
 
 ---
 
+## 0.1 一键自检
+
+装完任一依赖后跑：
+
+```bash
+node bin/bili.mjs doctor
+```
+
+它会告诉你 ffmpeg/CA、ASR venv 与模型、swiftc/Vision 助手、存储权限哪一项没就绪；
+`--json` 便于脚本消费。必需项（runtime / storage）失败时退出码为 1，可选能力缺失只标注。
+
 ## 1. ffmpeg
 
 ```bash
