@@ -30,7 +30,10 @@ jobs:
         run: node --test --test-isolation=none --test-concurrency=1 tests/unit/*.test.mjs
 
       - name: pack tarball
-        run: npm pack --pack-destination dist
+        run: |
+          # npm 11 要求 --pack-destination 目录已存在，否则 ENOENT。
+          mkdir -p dist
+          npm pack --pack-destination dist
 
       - name: create GitHub release
         uses: softprops/action-gh-release@v2
