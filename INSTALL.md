@@ -71,7 +71,20 @@ cmd /c mklink /J "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-bilibili-
 
 完成后重启 DSH。链接安装改代码只需再重启，不必重装。
 
-### c. 从本地 tarball 安装
+### c. 从 GitHub Release 的 tarball 安装（发布后可用）
+
+每个 tag（如 `v0.1.0`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
+下载后在 profile 里安装：
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm add /path/to/dsh-bilibili-bridge-0.1.0.tgz
+```
+
+然后在 `dsh.profile.bundles` 加入 `dsh-bilibili-bridge`，重启 DSH。Windows 用同样的 pnpm 命令；
+没有 pnpm 时用上面的手工链接方式。
+
+### d. 从本地 tarball 安装
 
 ```bash
 cd /Users/<你>/Code/dsh-BiliBridge
