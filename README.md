@@ -8,13 +8,16 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 
 需要 DSH 桌面版（`engines.dsh` 在 `>=0.1.0-rc.6 <0.3.0` 内）。ffmpeg、Python + faster-whisper、OCR 都是可选依赖，缺了会明确降级，不影响插件启动。
 
-安装（macOS / Linux / Windows 通用，DSH 插件管理器的标准写法）：
+安装（这条命令要求 `dsh` 可调用——它不一定在普通 shell 的 PATH 里）：
 
 ```bash
 dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
 ```
 
-也可以直接从仓库装（开发态）：
+若提示找不到 `dsh`：Windows 用桌面版自带 shim（`<DSH 安装目录>\resources\runtime\cli\bin\dsh.cmd`，
+把它放在 PATH 里，或替换上面命令里的 `dsh`）；仍不行就按 [INSTALL.md](INSTALL.md) 的手工链接安装（不需要 `dsh`）。
+
+也可以直接从仓库装（开发态，同样需要 shim/PATH）：
 
 ```bash
 dsh plugin --profile desktop add github:Si-xiyu/dsh-BiliBridge
@@ -139,6 +142,10 @@ cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibi
 
 macOS/Linux：`ln -sfn <仓库> ~/.dsh/profiles/desktop/node_modules/dsh-bilibili-bridge`，
 依赖写成 `"link:/Users/<你>/Code/dsh-BiliBridge"`。
+
+> 手工 junction 建好后**不要**再对该 profile 跑 `pnpm install` / `dsh plugin add`：pnpm 可能把
+> junction 换成拷贝，仓库改动从此不生效；要装依赖就在仓库里 `npm install`。
+> 验证：`/bilibili-bridge/api/status` 的 `identity.modulePath` 必须等于仓库绝对路径。
 
 > 已经用 `file:` 装的：改仓库后必须重新 `pnpm install`（或换成 `link:`），否则宿主加载的是旧拷贝。
 > **重启宿主只对链接安装有效。**

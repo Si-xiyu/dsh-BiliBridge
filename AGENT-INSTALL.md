@@ -39,6 +39,9 @@ dsh plugin --profile "$PROFILE_NAME" add https://github.com/Si-xiyu/dsh-BiliBrid
 dsh plugin --profile "$PROFILE_NAME" add github:Si-xiyu/dsh-BiliBridge
 ```
 
+> `dsh` 不一定在普通 shell 的 PATH 里。Windows 用桌面版 shim：
+> `<DSH 安装目录>\resources\runtime\cli\bin\dsh.cmd`（加入 PATH，或替换命令里的 `dsh`）；拿不到就改走 **1B**。
+
 验收：退出码 0；`$PROFILE_DIR/node_modules/dsh-bilibili-bridge` 存在；
 `$PROFILE_DIR/package.json` 的 `dsh.profile.bundles` 含 `dsh-bilibili-bridge`。
 
@@ -87,6 +90,11 @@ if (Test-Path "$pluginProfileDir\node_modules\dsh-bilibili-bridge") {
 依赖写 `"link:<repoDir 的绝对路径>"`。
 
 > 不要用 `file:`：pnpm 会把仓库拷贝进 `node_modules`，之后改代码不会生效。
+> 手工建了目录联接（junction）后，**不要再对该 profile 跑 `pnpm install` / `dsh plugin add`**：
+> pnpm 可能把 junction 换成拷贝，仓库改动随即失效。
+
+验收：`GET /bilibili-bridge/api/status` 的 `identity.modulePath` 必须等于仓库绝对路径
+（`$REPO_DIR` / `$repoDir`）；若指向 `node_modules` 下的拷贝，说明装成了拷贝，改回 `link:` 或重建 junction。
 
 ## 2. 重启 DSH 并确认工具注册
 

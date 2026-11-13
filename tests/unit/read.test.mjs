@@ -61,6 +61,23 @@ test('search signs video/user queries and projects fields and empty results', as
   });
 });
 
+test('search drops ad rows without a bvid but keeps upstream totals', async () => {
+  await mockFetch({ '/x/web-interface/wbi/search/type': { code: 0, data: {
+    result: [
+      { bvid: video.bvid, title: 'ok', author: 'UP', pubdate: 1 },
+      // 广告位：没有 bvid，映射后会变成 https://www.bilibili.com/video/ 和 1970 时间戳
+      { bvid: '', title: 'ad', author: '', pubdate: 0, is_ad: true },
+    ],
+    numResults: 2, numPages: 1, page: 1, pagesize: 20,
+  } } }, async () => {
+    const result = await search({ keyword: 'ad', jar: jar() });
+    assert.deepEqual(result.items.map((item) => item.bvid), [video.bvid]);
+    assert.equal(result.items[0].url, `https://www.bilibili.com/video/${video.bvid}`);
+    assert.equal(result.total, 2, 'total 是接口计数，不因过滤广告行而改变');
+    assert.equal(result.hasMore, false);
+  });
+});
+
 test('comments truncate Unicode characters and disable nested replies', () => {
   const result = projectComment({ rpid_str: '123456789123456789', content: { message: '😀'.repeat(601) }, member: { mid: 5 }, ctime: 1, replies: [{ rpid: 2 }] }, false);
   assert.equal(Array.from(result.message).length, 600);

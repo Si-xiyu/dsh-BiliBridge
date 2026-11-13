@@ -57,6 +57,8 @@ test('state reads paginate folder membership and preserve unknown responses', as
   await mockFetch(url => {
     if (url.pathname.endsWith('has/like')) return 0;
     if (url.pathname.endsWith('toview')) return { list: [] };
+    // Non-array ids payload exercises the paginated fallback.
+    if (url.pathname.endsWith('fav/resource/ids')) return {};
     return url.searchParams.get('pn') === '1' ? { medias: [{ id: 2, type: 2 }], has_more: true } : { medias: [{ id: 1, type: 2 }], has_more: false };
   }, async () => {
     assert.equal((await getFavoriteState({ aid: 1, mediaId: 12 })).state, true);
@@ -66,6 +68,53 @@ test('state reads paginate folder membership and preserve unknown responses', as
   await mockFetch(() => ({}), async () => {
     for (const read of [getFavoriteState, getWatchLaterState, getLikeState]) assert.equal((await read({ aid: 1, mediaId: 12 })).state, 'unknown');
   });
+});
+
+test('favorite state resolves a large folder from one ids request', async () => {
+  const paths = [];
+  await mockFetch(url => {
+    paths.push(url.pathname);
+    return Array.from({ length: 696 }, (_, i) => ({ id: i + 1, type: 2, bvid: `BV${i}` }));
+  }, async () => {
+    assert.equal((await getFavoriteState({ aid: 696, mediaId: 12 })).state, true);
+  });
+  assert.equal(paths.length, 1, 'ids must answer the whole folder in one request');
+  assert.ok(paths[0].endsWith('/x/v3/fav/resource/ids'));
+  assert.ok(!paths.some(p => p.endsWith('/x/v3/fav/resource/list')));
+});
+
+test('favorite state reports absence from ids without paging', async () => {
+  let calls = 0;
+  await mockFetch(() => { calls++; return [{ id: 2, type: 2 }, { id: 3, type: 21 }]; }, async () => {
+    assert.equal((await getFavoriteState({ aid: 1, mediaId: 12 })).state, false);
+  });
+  assert.equal(calls, 1);
+});
+
+test('favorite state falls back to the paginated list when ids fails', async () => {
+  const paths = [];
+  await mockFetch(url => {
+    paths.push(url.pathname);
+    if (url.pathname.endsWith('fav/resource/ids')) throw new Error('ids unavailable');
+    return { medias: [{ id: 1, type: 2 }], has_more: false };
+  }, async () => {
+    assert.equal((await getFavoriteState({ aid: 1, mediaId: 12 })).state, true);
+    assert.equal((await getFavoriteState({ aid: 9, mediaId: 12 })).state, false);
+  });
+  assert.ok(paths.includes('/x/v3/fav/resource/ids'));
+  assert.ok(paths.includes('/x/v3/fav/resource/list'));
+});
+
+test('favorite state ignores malformed ids arrays and falls back to paging', async () => {
+  let calls = 0;
+  await mockFetch(url => {
+    calls += 1;
+    if (url.pathname.endsWith('ids')) return [{}, {}];
+    return url.searchParams.get('pn') === '1' ? { medias: [{ id: 1, type: 2 }], has_more: false } : { medias: [], has_more: false };
+  }, async () => {
+    assert.equal((await getFavoriteState({ aid: 1, mediaId: 12 })).state, true);
+  });
+  assert.ok(calls >= 2, '畸形 ids 响应后应回退到分页列表');
 });
 
 test('registered write tools default to GET-only preview and reject invisible folders', async () => {
@@ -82,6 +131,7 @@ test('registered write tools default to GET-only preview and reject invisible fo
         case '/x/v2/history/toview': return { list: [] };
         case '/x/web-interface/archive/has/like': return 0;
         case '/x/v3/fav/folder/created/list-all': return { list: [{ id: 12 }] };
+        case '/x/v3/fav/resource/ids': return {};
         case '/x/v3/fav/resource/list': return { medias: [], has_more: false };
         default: assert.fail('unexpected request ' + url.pathname);
       }

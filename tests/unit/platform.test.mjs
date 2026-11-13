@@ -68,7 +68,8 @@ test('HF 镜像只在配置了才覆盖，其余环境变量原样继承', () =>
     process.env.HF_ENDPOINT = 'https://huggingface.co';
     const plain = asrEnv({ hfEndpoint: null });
     assert.equal(plain.HF_ENDPOINT, 'https://huggingface.co', '没配镜像时不该抹掉已有值');
-    assert.equal(plain.PATH, process.env.PATH, '其它环境变量必须继承，否则 python 找不到库');
+    // Windows 的环境变量键名是 Path 而不是 PATH；这里按实际键名取，断言仍然要求继承父进程的同一个值。
+    assert.equal(plain.Path ?? plain.PATH, process.env.Path ?? process.env.PATH, '其它环境变量必须继承，否则 python 找不到库');
 
     const mirrored = asrEnv({ hfEndpoint: 'https://hf-mirror.com' });
     assert.equal(mirrored.HF_ENDPOINT, 'https://hf-mirror.com');

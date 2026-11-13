@@ -61,10 +61,13 @@ npm install
 cd ~/.dsh/profiles/desktop && pnpm install
 ```
 
-> 没有全局 pnpm 时，直接用下面的手工链接方式即可（效果相同，只是以后 profile 再安装可能覆盖它）。
+> **依赖必须写 `link:`（pnpm 生成符号链接），不要写 `file:`。** `file:` 会让 pnpm 按 `files`
+> 字段把仓库拷贝进 `node_modules`，之后改仓库不生效，必须重新安装。
+> 没有全局 pnpm 时，可以直接建手工链接（目录联接），但**建完后不要再对这个 profile 跑
+> `pnpm install` / `dsh plugin add`**：pnpm 可能把链接换成拷贝，仓库改动从此失效。
 
 Windows 上 `link:` 路径写成 `"link:E:/Code/dsh-BiliBridge"`，其余相同。若不想跑 `pnpm install`，
-也可以直接建链接（之后 profile 再安装可能覆盖它）：
+也可以直接建链接：
 
 ```bash
 # macOS / Linux
@@ -75,14 +78,20 @@ cmd /c mklink /J "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-bilibili-
 
 完成后重启 DSH。链接安装改代码只需再重启，不必重装。
 
+验证装的是链接而不是拷贝：打开 `/bilibili-bridge/api/status`（设置页「BiliBridge」同样显示），
+`identity.modulePath` 必须等于仓库绝对路径；若指向 `node_modules` 下的拷贝，按上面的 `link:` 重装。
+
 ### c. 从 GitHub Release 的 tarball 安装（推荐给外部用户）
 
 每个 tag（如 `v0.1.0`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
-用 DSH 插件管理器直接装（macOS / Linux / Windows 同一条命令）：
+用 DSH 插件管理器直接装（macOS / Linux / Windows 同一条命令；需要 `dsh` 在 PATH 或下文 shim）：
 
 ```bash
 dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
 ```
+
+> 普通 shell 里 `dsh` 可能不在 PATH（Windows 尤其常见）。Windows 用桌面版自带 shim：
+> `<DSH 安装目录>\resources\runtime\cli\bin\dsh.cmd`；拿不到就退回 **b** 的手工链接安装（不需要 `dsh`）。
 
 也可以在下载后按 pnpm 语义安装（插件管理器不在时的手工方式）：
 
