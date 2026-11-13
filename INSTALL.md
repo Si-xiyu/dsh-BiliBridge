@@ -83,11 +83,11 @@ cmd /c mklink /J "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-bilibili-
 
 ### c. 从 GitHub Release 的 tarball 安装（推荐给外部用户）
 
-每个 tag（如 `v0.1.0`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
+每个 tag（如 `v0.1.1`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
 用 DSH 插件管理器直接装（macOS / Linux / Windows 同一条命令；需要 `dsh` 在 PATH 或下文 shim）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
+dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.1/dsh-bilibili-bridge-0.1.1.tgz
 ```
 
 > 普通 shell 里 `dsh` 可能不在 PATH（Windows 尤其常见）。Windows 用桌面版自带 shim：
@@ -97,7 +97,7 @@ dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/relea
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add /path/to/dsh-bilibili-bridge-0.1.0.tgz
+pnpm add /path/to/dsh-bilibili-bridge-0.1.1.tgz
 ```
 
 无论哪种方式，都要确认 `dsh.profile.bundles` 里有 `dsh-bilibili-bridge`（插件管理器会自动加；
@@ -107,12 +107,12 @@ pnpm add /path/to/dsh-bilibili-bridge-0.1.0.tgz
 
 ```bash
 cd /Users/<你>/Code/dsh-BiliBridge
-npm pack                          # 产出 dsh-bilibili-bridge-0.1.0.tgz
+npm pack                          # 产出 dsh-bilibili-bridge-0.1.1.tgz
 cd ~/.dsh/profiles/desktop
-pnpm add /Users/<你>/Code/dsh-BiliBridge/dsh-bilibili-bridge-0.1.0.tgz
+pnpm add /Users/<你>/Code/dsh-BiliBridge/dsh-bilibili-bridge-0.1.1.tgz
 ```
 
-`npm install /path/to/dsh-bilibili-bridge-0.1.0.tgz` 语义相同。tarball 里有 `lib/`、`bin/`、
+`npm install /path/to/dsh-bilibili-bridge-0.1.1.tgz` 语义相同。tarball 里有 `lib/`、`bin/`、
 `cordis.patch.yml`、README、INSTALL、CHANGELOG、LICENSE，**不含** `docs/` 与测试。
 安装后仍需把 `dsh-bilibili-bridge` 加进 `dsh.profile.bundles`（由插件管理器完成时无需手工加），然后重启 DSH。tarball 是拷贝，升级必须重装。
 

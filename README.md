@@ -11,7 +11,7 @@ DSH 插件：把 B站读取、受审批的账号写入和两阶段视频证据�
 安装（这条命令要求 `dsh` 可调用——它不一定在普通 shell 的 PATH 里）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
+dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.1/dsh-bilibili-bridge-0.1.1.tgz
 ```
 
 若提示找不到 `dsh`：Windows 用桌面版自带 shim（`<DSH 安装目录>\resources\runtime\cli\bin\dsh.cmd`，

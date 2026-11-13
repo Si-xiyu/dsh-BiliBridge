@@ -1,5 +1,42 @@
 # 变更记录
 
+## 0.1.1（2026-11-13）
+
+安装体验与 Windows 验收修复版本。
+
+### Added
+
+- 设置页新增「运行时路径」：ffmpeg、CA 证书、ASR Python、模型目录可直接编辑；
+  留空表示自动探测，保存后下一次调用生效。配置写入 `config.json` 的 `runtime` 段，
+  旧版顶层 `ffmpegPath` 等键继续兼容，嵌套优先。
+- 新增 `AGENT-INSTALL.md`：面向 AI Agent 的安装与验收说明。
+- README 增加 Quickstart（Release tarball / 仓库安装两条路径）。
+- 发布工作流：push tag 时自动构建 GitHub Release 并附 tarball。
+
+### Changed
+
+- 收藏夹成员判断优先调用 `/x/v3/fav/resource/ids`：一次请求返回全部条目
+  （696 项实测约 1.5 秒），替代逐页扫描；异常或畸形响应回退到原分页逻辑。
+- 搜索结果过滤掉没有合法 bvid 的广告/推荐行；`total` 等上游计数语义不变。
+- 安装文档明确 profile 依赖使用 `link:`、禁止 `file:`；手工 junction 后不要再跑
+  `pnpm install` / `dsh plugin add`；补充 `dsh` 不在 PATH 时使用桌面版 shim 的说明。
+- 设置保存时按生效值重置运行时缓存；ASR 路径变化会重启常驻 daemon；
+  解析器增加代际，reset 期间完成的探测不会写回旧缓存。
+
+### Fixed
+
+- Windows 收藏夹预览 30 秒超时（大收藏夹）。
+- Windows 原生环境单测因 `PATH` / `Path` 大小写失败。
+- Windows 搜索结果混入空 bvid / 1970 时间戳的广告条目。
+- 设置页把旧版顶层运行路径显示为空、误判为自动探测。
+- `settings/reset` 403 分支调用未定义函数导致的 500。
+
+### 已知边界
+
+- DSH 宿主重启后的工具级复核（Windows）仍在进行；库层与 tool handler 层已通过。
+- 未发布到 npm registry；插件市场按包名安装待发布后补充。
+- Windows 上单测预期 336 项、2 项 POSIX 专用 skip。
+
 ## 0.1.0（2026-11-11）
 
 首个面向早期用户的可分发版本，以开发态链接安装与本地 tarball 安装为主。

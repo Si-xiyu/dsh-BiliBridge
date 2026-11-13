@@ -30,7 +30,7 @@ ls "$PROFILE_DIR" 2>/dev/null || echo "PROFILE_NOT_FOUND"
 ## 1A. 安装（插件管理器，推荐）
 
 ```bash
-dsh plugin --profile "$PROFILE_NAME" add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.0/dsh-bilibili-bridge-0.1.0.tgz
+dsh plugin --profile "$PROFILE_NAME" add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.1/dsh-bilibili-bridge-0.1.1.tgz
 ```
 
 开发态也可以直接从仓库装：
