@@ -83,11 +83,11 @@ cmd /c mklink /J "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-bilibili-
 
 ### c. 从 GitHub Release 的 tarball 安装（推荐给外部用户）
 
-每个 tag（如 `v0.1.1`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
+每个 tag（如 `v0.1.2`）会自动构建 GitHub Release，并附带 `dsh-bilibili-bridge-<version>.tgz`。
 用 DSH 插件管理器直接装（macOS / Linux / Windows 同一条命令；需要 `dsh` 在 PATH 或下文 shim）：
 
 ```bash
-dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.1/dsh-bilibili-bridge-0.1.1.tgz
+dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.2/dsh-bilibili-bridge-0.1.2.tgz
 ```
 
 > 普通 shell 里 `dsh` 可能不在 PATH（Windows 尤其常见）。Windows 用桌面版自带 shim：
