@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CookieJar } from '../../lib/bili/http.mjs';
 import { listMessages, listSessions } from '../../lib/bili/messages.mjs';
+import { notifications } from '../../lib/bili/notifications.mjs';
 
 const jar = new CookieJar({ SESSDATA: 'fixture', DedeUserID: '123' });
 
@@ -80,4 +81,18 @@ test('私信读取的鉴权、参数与游标绑定', async () => {
   await assert.rejects(listMessages({ jar, talkerId: '456', sessionType: 4 }), { code: 'INVALID_ARGUMENT' });
   const cursor = Buffer.from(JSON.stringify({ scope: 'thread', account: '999', sessionType: 1, talkerId: '456', endSeqno: '1' })).toString('base64url');
   await assert.rejects(listMessages({ jar, talkerId: '456', cursor }), { code: 'INVALID_ARGUMENT' });
+});
+
+test('点赞通知的 latest 批次不随 pageSize 截断', async () => {
+  const data = await withFetch(async (input) => {
+    const url = new URL(input);
+    assert.ok(url.pathname.endsWith('/x/msgfeed/like'));
+    return Response.json({ code: 0, data: {
+      total: { items: [{ id: 1 }, { id: 2 }, { id: 3 }], cursor: { is_end: true } },
+      latest: { items: [{ id: 11 }, { id: 12 }, { id: 13 }] },
+    } });
+  }, () => notifications({ scope: 'likes', pageSize: 1, jar }));
+  assert.equal(data.items.length, 1);
+  assert.deepEqual(data.latest.map(item => item.id), ['11', '12', '13']);
+  assert.equal(typeof data.nextCursor, 'string');
 });

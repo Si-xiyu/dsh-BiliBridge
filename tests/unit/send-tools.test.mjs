@@ -17,6 +17,9 @@ async function isolated(run) {
   const beforeDir = process.env.BILI_DATA_DIR, original = globalThis.fetch;
   process.env.BILI_DATA_DIR = root;
   let mutation = async () => { throw new Error('unexpected mutation'); };
+  let draftList = () => { throw new Error('unexpected draft list'); };
+  let timingList = () => ({ items: [], count: 0 });
+  let dynamicRead = () => { throw new Error('unexpected dynamic read'); };
   const posts = [];
   globalThis.fetch = async (input, options) => {
     const url = new URL(input);
@@ -31,10 +34,13 @@ async function isolated(run) {
     else if (url.pathname.endsWith('/nav')) data = { isLogin: true, mid: 123 };
     else if (url.pathname.endsWith('/view')) data = { bvid, aid: 1, title: 'test', pages: [{ page: 1, cid: 2, duration: 10 }] };
     else if (url.pathname.endsWith('/reply')) data = { replies: [{ rpid_str: '9007199254740999', member: { mid: 123 }, content: { message: 'test text' }, parent_str: '11', ctime: Math.floor(Date.now() / 1000) }] };
+    else if (url.pathname.endsWith('/get_drafts')) data = draftList();
+    else if (url.pathname.endsWith('/timing/draft/list')) data = timingList();
+    else if (url.pathname.includes('/web-dynamic/')) data = dynamicRead(url);
     else throw Error('unexpected GET ' + url.pathname);
     return Response.json({ code: 0, data });
   };
-  try { await run({ root, posts, onPost(fn) { mutation = fn; } }); }
+  try { await run({ root, posts, onPost(fn) { mutation = fn; }, onDraftList(fn) { draftList = fn; }, onTimingList(fn) { timingList = fn; }, onDynamicRead(fn) { dynamicRead = fn; } }); }
   finally { globalThis.fetch = original; if (beforeDir === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = beforeDir; await rm(root, { recursive: true, force: true }); }
 }
 
@@ -109,7 +115,7 @@ test('dynamic image change invalidates preview; multipart upload precedes JSON p
   assert.equal(result.status, 'SENT'); assert.equal(posts.length, 2);
 }));
 
-test('all six mutations require apply approval; reconciliation is read-only and tool budget stays 27', async () => {
+test('all seven write tools require apply approval; reconciliation is read-only and tool budget stays 27', async () => {
   const hooks = [], tools = [];
   apply({ on(name, fn) { if (name === 'tools/pre-execute') hooks.push(fn); }, tools: { register(tool) { tools.push(tool); } } });
   assert.equal(tools.length, 27);
@@ -135,15 +141,126 @@ test('image upload failure never publishes a text-only fallback', async () => is
   assert.equal(result.status, 'FAILED'); assert.equal(posts.length, 1); assert.ok(posts[0].url.pathname.endsWith('upload_bfs'));
 }));
 
-test('scheduled dynamic uses a platform draft, never an in-process timer', async () => isolated(async ({ posts, onPost }) => {
+test('scheduled dynamic uses a platform draft, never an in-process timer', async () => isolated(async ({ posts, onPost, onDraftList }) => {
   const args = { jar, text: 'scheduled text', scheduleTime: Math.floor(Date.now() / 1000) + 3600 };
+  onDraftList(() => ({ drafts: [] }));
   const preview = await dynamicPublish(args);
   onPost((url, options) => {
-    assert.ok(url.pathname.endsWith('/add_draft'));
-    const body = new URLSearchParams(options.body);
-    assert.equal(body.get('type'), '2'); assert.equal(JSON.parse(body.get('request')).content, args.text);
+    assert.equal(url.pathname, '/x/dynamic/feed/create/dyn');
+    const { dyn_req: request } = JSON.parse(options.body);
+    assert.equal(request.scene, 1);
+    assert.equal(request.content.contents[0].raw_text, args.text);
+    assert.equal(request.option.timer_pub_time, args.scheduleTime);
     return { draft_id: '12345' };
   });
   const result = await dynamicPublish({ ...args, intent: 'apply', previewToken: preview.previewToken });
   assert.equal(result.result.draftId, '12345'); assert.equal(posts.length, 1);
+}));
+
+test('scheduled dynamic cannot report success from a regular dynamic id alone', async () => isolated(async ({ posts, onPost, onDraftList }) => {
+  const args = { jar, text: 'scheduled text', scheduleTime: Math.floor(Date.now() / 1000) + 3600 };
+  onDraftList(() => ({ drafts: [] }));
+  const preview = await dynamicPublish(args);
+  onPost(() => ({ dyn_id_str: '9007199254740999' }));
+  const result = await dynamicPublish({ ...args, intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(result.status, 'PENDING_CONFIRM');
+  assert.equal(posts.length, 1);
+}));
+
+test('dynamic check reads Opus detail when the feed omits the text and never resends', async () => isolated(async ({ posts, onPost, onDynamicRead }) => {
+  const args = { jar, text: 'missing from feed' };
+  const preview = await dynamicPublish(args);
+  onPost(() => { throw new DOMException('timeout', 'TimeoutError'); });
+  const pending = await dynamicPublish({ ...args, intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(pending.status, 'PENDING_CONFIRM');
+  const item = { id_str: '9007199254740999', modules: {
+    module_author: { mid: 123, pub_ts: Math.floor(Date.now() / 1000) }, module_dynamic: { desc: null },
+  } };
+  onDynamicRead(url => {
+    if (url.pathname.endsWith('/feed/space')) return { items: [item], has_more: false };
+    assert.equal(url.searchParams.get('features'), 'itemOpusStyle');
+    return { item: { ...item, modules: { ...item.modules, module_dynamic: {
+      desc: null, major: { opus: { summary: { text: args.text } } },
+    } } } };
+  });
+  const checked = await dynamicPublish({ jar, intent: 'check', operationId: pending.operationId });
+  assert.equal(checked.status, 'SENT');
+  assert.equal(checked.result.dynamicId, item.id_str);
+  assert.equal(posts.length, 1);
+}));
+
+test('scheduled dynamic check uses get_drafts and only confirms a unique matching draft without resending', async () => isolated(async ({ posts, onPost, onDraftList }) => {
+  const args = { jar, text: 'scheduled text', scheduleTime: Math.floor(Date.now() / 1000) + 3600 };
+  onDraftList(() => ({ drafts: [] }));
+  const preview = await dynamicPublish(args);
+  onPost(() => { throw new DOMException('timeout', 'TimeoutError'); });
+  const pending = await dynamicPublish({ ...args, intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(pending.status, 'PENDING_CONFIRM');
+
+  const matching = { draft_id: '9007199254740999', publish_time: args.scheduleTime, request: JSON.stringify({ content: args.text }) };
+  const check = () => dynamicPublish({ jar, intent: 'check', operationId: pending.operationId });
+  onDraftList(() => ({ drafts: [matching, { ...matching, draft_id: '12345' }] }));
+  assert.equal((await check()).status, 'PENDING_CONFIRM');
+  onDraftList(() => ({ list: [
+    null,
+    { ...matching, draft_id: undefined },
+    { ...matching, request: 'null' },
+    { ...matching, request: JSON.stringify({ content: args.text, pictures: '{}' }) },
+    { ...matching, publish_time: args.scheduleTime + 1 },
+    { ...matching, request: JSON.stringify({ dyn_req: { content: { contents: [{ type: 1, raw_text: args.text }] }, pics: [] } }) },
+  ] }));
+  const checked = await check();
+  assert.equal(checked.status, 'SENT');
+  assert.equal(checked.reconciled, true);
+  assert.deepEqual(checked.result, { draftId: matching.draft_id, scheduleTime: args.scheduleTime });
+  assert.equal(posts.length, 1);
+}));
+
+test('scheduled dynamic check never confirms a draft that existed before submission', async () => isolated(async ({ posts, onPost, onDraftList }) => {
+  const args = { jar, text: 'scheduled text', scheduleTime: Math.floor(Date.now() / 1000) + 3600 };
+  const matching = { draft_id: '9007199254740999', publish_time: args.scheduleTime, request: JSON.stringify({ content: args.text }) };
+  onDraftList(() => ({ drafts: [matching] }));
+  const preview = await dynamicPublish(args);
+  onPost(() => { throw new DOMException('timeout', 'TimeoutError'); });
+  const pending = await dynamicPublish({ ...args, intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(pending.status, 'PENDING_CONFIRM');
+  onDraftList(() => ({ drafts: [matching] }));
+  const checked = await dynamicPublish({ jar, intent: 'check', operationId: pending.operationId });
+  assert.equal(checked.status, 'PENDING_CONFIRM');
+  assert.equal(posts.length, 1);
+}));
+
+test('draft apply approval includes the bound content and source', async () => isolated(async ({ onDraftList, onTimingList }) => {
+  onDraftList(() => ({ drafts: [{ draft_id: 777, type: 2, publish_time: 1700003600, request: JSON.stringify({ content: '草稿正文' }) }] }));
+  onTimingList(() => ({ count: 1, items: [{
+    id_str: '9007199254740999', author: { pub_ts: 1795014000 },
+    content: { title: 'test', summary: { text: 'test' }, pics: [] },
+  }] }));
+  const hooks = [];
+  apply({ on(name, fn) { if (name === 'tools/pre-execute') hooks.push(fn); }, tools: { register() {} } });
+  const gate = hooks[0];
+  const legacy = await gate({ name: 'bilibili_content_manage', args: { action: 'publish_draft_now', draftId: '777', intent: 'apply', previewToken: 'x' } }, () => 'next');
+  assert.equal(legacy.kind, 'ask');
+  assert.match(legacy.reason, /草稿正文/);
+  assert.match(legacy.reason, /legacy/);
+  assert.doesNotMatch(legacy.reason, /previewToken/);
+  const timing = await gate({ name: 'bilibili_content_manage', args: { action: 'delete_draft', draftId: '9007199254740999', intent: 'apply' } }, () => 'next');
+  assert.equal(timing.kind, 'ask');
+  assert.match(timing.reason, /"text":"test"/);
+  assert.match(timing.reason, /timing/);
+}));
+
+test('旧账本行没有发送前基线时不会自动确认定时草稿', async () => isolated(async ({ onDraftList }) => {
+  const { ledgerUpdate } = await import('../../lib/bili/send-ledger.mjs');
+  const { textHash } = await import('../../lib/bili/send-ledger.mjs');
+  const scheduleTime = Math.floor(Date.now() / 1000) + 3600;
+  const text = 'legacy pending';
+  const operationId = '00000000-0000-4000-8000-000000000001';
+  await ledgerUpdate('123', () => ({ value: null, event: {
+    operationId, key: 'fixture', kind: 'dynamic', target: { account: '123', topicId: null, scheduleTime, images: [] },
+    textHash: textHash(text), fingerprint: '', status: 'PENDING_CONFIRM', createdAt: Date.now() - 200_000,
+  } }));
+  onDraftList(() => ({ drafts: [{ draft_id: '9007199254740999', publish_time: scheduleTime, request: JSON.stringify({ content: text }) }] }));
+  const checked = await dynamicPublish({ jar, intent: 'check', operationId });
+  assert.equal(checked.status, 'PENDING_CONFIRM');
 }));

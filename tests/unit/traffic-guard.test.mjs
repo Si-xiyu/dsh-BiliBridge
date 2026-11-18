@@ -140,6 +140,7 @@ test('publish and private messages share the stricter cooldown; uploads use low-
   await f.guard.run({ ...options, method: 'POST', kind: 'message' }, async () => result());
   assert.equal(trafficKind('https://api.bilibili.com/x/dynamic/feed/create/dyn', 'POST'), 'publish');
   assert.equal(trafficKind('https://api.vc.bilibili.com/dynamic_draft/v1/dynamic_draft/publish_now', 'POST'), 'publish');
+  assert.equal(trafficKind('https://api.bilibili.com/x/dynamic/feed/timing_dyn/publish', 'POST'), 'publish');
   assert.equal(trafficKind('https://api.bilibili.com/x/dynamic/feed/draw/upload_bfs', 'POST'), 'write');
 });
 

@@ -18,6 +18,7 @@ async function isolated(run) {
   const posts = [];
   let mutation = async () => { throw new Error('unexpected mutation'); };
   let draftRequest = JSON.stringify({ content: '草稿正文' });
+  let timingContent = () => ({ title: 'test', summary: { text: 'test' }, pics: [] });
   let commentMid = 123;
   let detailResult = async () => ({ code: 0, data: { item: {
     id_str: '555', type: 'DYNAMIC_TYPE_WORD', modules: {
@@ -38,9 +39,16 @@ async function isolated(run) {
     if (url.pathname.endsWith('/get_drafts')) return Response.json({ code: 0, data: { drafts: [
       { draft_id: 777, type: 2, publish_time: 1700003600, request: draftRequest },
     ] } });
+    if (url.pathname.endsWith('/timing/draft/list')) {
+      assert.equal(url.searchParams.get('web_location'), '333.1365');
+      return Response.json({ code: 0, data: { count: 1, items: [{
+        id_str: '9007199254740999', pub_time: 1794998996, author: { pub_ts: 1795014000 },
+        content: timingContent(),
+      }] } });
+    }
     throw new Error('unexpected GET ' + url.pathname);
   };
-  try { await run({ root, posts, onPost(fn) { mutation = fn; }, onDetail(fn) { detailResult = fn; }, setCommentMid(fn) { commentMid = fn(commentMid); }, setDraftRequest(fn) { draftRequest = fn(draftRequest); } }); }
+  try { await run({ root, posts, onPost(fn) { mutation = fn; }, onDetail(fn) { detailResult = fn; }, setCommentMid(fn) { commentMid = fn(commentMid); }, setDraftRequest(fn) { draftRequest = fn(draftRequest); }, setTimingContent(fn) { const before = timingContent; timingContent = () => fn(before()); } }); }
   finally {
     globalThis.fetch = original;
     if (beforeDir === undefined) delete process.env.BILI_DATA_DIR; else process.env.BILI_DATA_DIR = beforeDir;
@@ -127,20 +135,83 @@ test('删除动态：非自己的动态在 preview 阶段拒绝', async () => is
   } finally { globalThis.fetch = original; }
 }));
 
-test('定时草稿：列表只读，删除/立即发布需要 preview', async () => isolated(async ({ posts, onPost }) => {
+test('定时草稿：新旧列表合并，各自路由到对应管理接口', async () => isolated(async ({ posts, onPost }) => {
   const list = await listDrafts({ jar });
-  assert.equal(list.count, 1);
-  assert.equal(list.items[0].draftId, '777');
-  assert.equal(list.items[0].text, '草稿正文');
+  assert.equal(list.count, 2);
+  assert.equal(list.items[0].draftId, '9007199254740999');
+  assert.equal(list.items[0].text, 'test');
+  assert.equal(list.items[0].title, 'test');
+  assert.equal(list.items[0].publishTime, '2026-11-18T15:00:00.000Z');
+  assert.equal(list.items[0].source, 'timing');
+  assert.equal(list.items[1].draftId, '777');
+  assert.equal(list.items[1].text, '草稿正文');
   assert.equal(posts.length, 0);
+
+  const timingDelete = await deleteDraft({ jar, draftId: '9007199254740999' });
+  assert.equal(timingDelete.status, 'PREVIEW');
+  assert.equal(timingDelete.target.draftId, '9007199254740999');
+  assert.equal(timingDelete.target.source, 'timing');
+  assert.equal(timingDelete.target.publishTime, 1795014000);
+  assert.match(timingDelete.target.requestHash, /^[a-f0-9]{64}$/);
+  onPost((url, options) => {
+    assert.equal(url.pathname, '/x/dynamic/feed/timing_dyn/delete');
+    assert.equal(url.searchParams.get('csrf'), jar.get('bili_jct'));
+    assert.deepEqual(JSON.parse(options.body), { dyn_id_str: '9007199254740999' });
+    return { code: 0, data: {} };
+  });
+  const removed = await deleteDraft({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: timingDelete.previewToken });
+  assert.equal(removed.status, 'DELETED');
+  assert.equal(removed.source, 'timing');
+  await assert.rejects(
+    deleteDraft({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: timingDelete.previewToken }),
+    { code: 'PREVIEW_REQUIRED' },
+  );
+
+  const timingPublish = await publishDraftNow({ jar, draftId: '9007199254740999' });
+  assert.equal(timingPublish.status, 'PREVIEW');
+  assert.equal(timingPublish.draft.text, 'test');
+  onPost((url, options) => {
+    assert.equal(url.pathname, '/x/dynamic/feed/timing_dyn/publish');
+    assert.equal(url.searchParams.get('csrf'), jar.get('bili_jct'));
+    const body = JSON.parse(options.body);
+    assert.equal(body.dyn_id_str, '9007199254740999');
+    assert.deepEqual(body.dyn_req.content.contents, [{ raw_text: 'test', type: 1, biz_id: '' }]);
+    assert.equal(body.dyn_req.scene, 2);
+    assert.equal(body.dyn_req.meta.app_meta.from, 'create.dynamic.web');
+    assert.equal(body.dyn_req.option.aigc, 2);
+    return { code: 0, data: { dyn_id_str: '1272000000000000000' } };
+  });
+  const published = await publishDraftNow({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: timingPublish.previewToken });
+  assert.equal(published.status, 'PUBLISHED');
+  assert.equal(published.source, 'timing');
+  assert.equal(published.dynamicId, '1272000000000000000');
+  assert.equal(published.url, 'https://t.bilibili.com/1272000000000000000');
+
   const preview = await deleteDraft({ jar, draftId: '777' });
   assert.equal(preview.status, 'PREVIEW');
-  onPost((url) => { assert.ok(url.pathname.endsWith('/rm_draft')); return { code: 0, data: {} }; });
+  onPost((url, options) => {
+    assert.ok(url.pathname.endsWith('/rm_draft'));
+    const fields = new URLSearchParams(options.body);
+    assert.equal(fields.get('draft_id'), '777');
+    assert.equal(fields.get('csrf_token'), jar.get('bili_jct'));
+    return { code: 0, data: {} };
+  });
   assert.equal((await deleteDraft({ jar, draftId: '777', intent: 'apply', previewToken: preview.previewToken })).status, 'DELETED');
   const publishPreview = await publishDraftNow({ jar, draftId: '777' });
   assert.equal(publishPreview.status, 'PREVIEW');
   onPost((url) => { assert.ok(url.pathname.endsWith('/publish_now')); return { code: 0, data: {} }; });
   assert.equal((await publishDraftNow({ jar, draftId: '777', intent: 'apply', previewToken: publishPreview.previewToken })).status, 'PUBLISHED');
+}));
+
+test('新版草稿立即发布绑定正文：预览后网页改了内容必须重新预览', async () => isolated(async ({ posts, setTimingContent }) => {
+  const preview = await publishDraftNow({ jar, draftId: '9007199254740999' });
+  assert.equal(preview.status, 'PREVIEW');
+  setTimingContent((content) => ({ ...content, summary: { text: '网页改过的正文' } }));
+  await assert.rejects(
+    publishDraftNow({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: preview.previewToken }),
+    { code: 'PREVIEW_REQUIRED' },
+  );
+  assert.equal(posts.length, 0);
 }));
 
 test('publish_draft_now 绑定草稿内容：预览后修改草稿必须重新预览', async () => isolated(async ({ posts, onPost, setDraftRequest }) => {
@@ -164,4 +235,23 @@ test('publish_draft_now 绑定草稿内容：预览后修改草稿必须重新�
 test('内容管理不接受 check，也不会在缺少目标时发请求', async () => isolated(async () => {
   await assert.rejects(deleteComment({ jar, bvid, rpid: '42', intent: 'check' }), { code: 'INVALID_ARGUMENT' });
   await assert.rejects(deleteDraft({ jar, intent: 'preview' }), { code: 'INVALID_ARGUMENT' });
+}));
+
+test('新版草稿立即发布没有返回动态 ID 时只报 PENDING_CONFIRM', async () => isolated(async ({ onPost }) => {
+  const preview = await publishDraftNow({ jar, draftId: '9007199254740999' });
+  assert.equal(preview.status, 'PREVIEW');
+  onPost((url) => { assert.equal(url.pathname, '/x/dynamic/feed/timing_dyn/publish'); return { code: 0, data: {} }; });
+  const result = await publishDraftNow({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: preview.previewToken });
+  assert.equal(result.status, 'PENDING_CONFIRM');
+  assert.equal(result.dynamicId, undefined);
+  assert.match(result.note, /不要重复发布/);
+}));
+
+test('删除新版草稿绑定正文：预览后网页改了内容必须重新预览', async () => isolated(async ({ setTimingContent }) => {
+  const preview = await deleteDraft({ jar, draftId: '9007199254740999' });
+  setTimingContent((content) => ({ ...content, summary: { text: '网页改过的正文' } }));
+  await assert.rejects(
+    deleteDraft({ jar, draftId: '9007199254740999', intent: 'apply', previewToken: preview.previewToken }),
+    { code: 'PREVIEW_REQUIRED' },
+  );
 }));

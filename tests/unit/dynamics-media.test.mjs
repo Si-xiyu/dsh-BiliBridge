@@ -2,7 +2,8 @@ import '../helpers/http-isolation.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { collectPics, getDynamicDetail, originIndex, projectDynamic } from '../../lib/bili/dynamics.mjs';
+import { CookieJar } from '../../lib/bili/http.mjs';
+import { collectPics, getDynamicDetail, listDynamics, originIndex, projectDynamic } from '../../lib/bili/dynamics.mjs';
 
 const author = (mid, name, pubTs = 1700000000) => ({ module_author: { mid, name, pub_ts: pubTs } });
 
@@ -118,10 +119,11 @@ test('按 dynamicId 读取详情并复用同一投影', async () => {
     const url = new URL(input);
     assert.equal(url.pathname, '/x/polymer/web-dynamic/v1/detail');
     assert.equal(url.searchParams.get('id'), '222');
+    assert.equal(url.searchParams.get('features'), 'itemOpusStyle');
     return Response.json({ code: 0, data: { item: {
       id_str: '222', type: 'DYNAMIC_TYPE_DRAW', modules: {
         ...author(1, 'UP', 1700002000),
-        module_dynamic: { desc: { text: '详情' }, major: { draw: { items: [{ src: 'https://i0.hdslb.com/d.jpg' }] } } },
+        module_dynamic: { desc: null, major: { opus: { summary: { text: '详情' }, pics: [{ url: 'https://i0.hdslb.com/d.jpg' }] } } },
       },
     } } });
   };
@@ -134,4 +136,43 @@ test('按 dynamicId 读取详情并复用同一投影', async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test('动态列表也带 itemOpusStyle，Opus 正文和图片不会在列表里丢失', async () => {
+  const original = globalThis.fetch;
+  const queries = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    queries.push(url);
+    if (url.pathname.endsWith('/feed/space')) return Response.json({ code: 0, data: {
+      items: [{ id_str: '444', type: 'DYNAMIC_TYPE_DRAW', modules: {
+        module_author: { mid: 7, name: 'UP', pub_ts: 1700000000 },
+        module_dynamic: { desc: null, major: { opus: { summary: { text: '图文正文' }, pics: [{ url: 'https://i0.hdslb.com/e.jpg' }] } } },
+      } }], has_more: false,
+    } });
+    if (url.pathname.endsWith('/feed/all')) return Response.json({ code: 0, data: { items: [], has_more: false } });
+    if (url.pathname.endsWith('/nav')) return Response.json({ code: 0, data: { isLogin: true, mid: 123 } });
+    throw new Error('unexpected ' + url.pathname);
+  };
+  const jar = new CookieJar({ buvid3: 'fixture' });
+  try {
+    const space = await listDynamics({ mid: '7', jar });
+    assert.equal(space.items[0].text, '图文正文');
+    assert.deepEqual(space.items[0].pics, ['https://i0.hdslb.com/e.jpg']);
+    await listDynamics({ jar });
+  } finally { globalThis.fetch = original; }
+  const feeds = queries.filter((url) => url.pathname.includes('/feed/'));
+  assert.equal(feeds.length, 2);
+  assert.ok(feeds.every((url) => url.searchParams.get('features') === 'itemOpusStyle'));
+});
+
+test('desc 与 opus.summary 同时存在时正文都保留并去重', () => {
+  const same = projectDynamic({ id_str: '445', modules: { ...author(8, 'UP'), module_dynamic: {
+    desc: { text: '同一段' }, major: { opus: { summary: { text: '同一段' } } },
+  } } });
+  assert.equal(same.text, '同一段');
+  const both = projectDynamic({ id_str: '446', modules: { ...author(9, 'UP'), module_dynamic: {
+    desc: { text: '短文案' }, major: { opus: { summary: { text: '长文正文' } } },
+  } } });
+  assert.equal(both.text, '短文案\n长文正文');
 });

@@ -50,7 +50,7 @@ node "$env:USERPROFILE\.dsh\profiles\desktop\node_modules\dsh-bilibili-bridge\bi
 完整状态见 [docs/state.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/state.md)（2026-11-10/11 的历史快照；当前版本以 CHANGELOG 与 Releases 为准），工具的真实 endpoint 与验证等级见 [docs/capability-matrix.md](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/capability-matrix.md)。
 
 - 认证、HTTP/WBI、凭据持久化：已在旧 macOS 环境用真实账号验证（扫码登录、投稿、稍后观看、收藏夹、评论、字幕、弹幕、故事板）。
-- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。27 工具与设置页已在 macOS 与 Windows 宿主验收（2026-11-18）；写操作审批路径目前只做过 preview，未执行 apply。以下联合验收报告是 2026-11-10 的历史记录，不代表当前宿主状态：[联合验收报告](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/integration-review.md)。
+- 工具层 **27 个**：原有 25 个入口保持兼容，新增私信读取和内容管理（删除自己的评论/动态、定时草稿）；动态工具增加按 `dynamicId` 读详情和可选图片附件。节能模式与统一风控保护已集成；底部图片条已按用户要求回滚（原因：效果不好）。27 工具与设置页已在 macOS 与 Windows 宿主验收（2026-11-18）；写操作已做真实 apply 验收（收藏/稍后看/点赞/评论/图文动态/私信/定时草稿），宿主拒绝审批分支受当前 profile 自动审批配置限制，详见验收记录。以下联合验收报告是 2026-11-10 的历史记录，不代表当前宿主状态：[联合验收报告](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/integration-review.md)。
 - 视频理解：Stage 1（文本 + 封面 + Uniform／Adaptive 双九宫格）可用；Stage 2 支持定向及全片／区间自适应选帧、**ffmpeg 抽帧**（误差约一帧，不声明毫秒上界）、**窗口化 ASR**（常驻 worker）、**可选 OCR**；没有 ffmpeg 时降级故事板，`maxErrorMs` 用每帧实测偏差。inspect 多帧按**每张最多 6 格（2×3）**拆图（7→4+3、9→5+4），避免细长拼图被宿主整体降采样。
 - 平台：Windows 与 macOS 走同一套代码，差异只在外部依赖（ffmpeg / OCR 引擎 / ASR 运行时）。
   macOS 上 OCR 用系统自带的 Apple Vision，但首次需要 Xcode Command Line Tools（用 `swiftc` 编译一个 Vision 助手，之后按源码 hash 复用）；ffmpeg 用 Homebrew 版，CA 自动取系统证书包。见 [macOS 安装与验证](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/macos-setup.md)。
@@ -115,7 +115,7 @@ brew install ffmpeg     # 插件会自动在 /opt/homebrew/bin 找到它，CA �
 | `bilibili_messages` | 私信会话列表与正文读取（只读、不标记已读，正文截断） |
 | `bilibili_comment_send` | 发表评论或回复 |
 | `bilibili_message_send` | 文字私信 |
-| `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时草稿（定时创建未验收，当前返回 4120015） |
+| `bilibili_dynamic_publish` | 文字 / 图文 / 话题 / 定时草稿（新版定时已真实创建、列表读回、删除与立即发布） |
 | `bilibili_content_manage` | 删除自己的评论/动态、列出/删除/立即发布定时草稿 |
 | `bilibili_collect` | 有上限的搜索后批量评论、字幕采集 |
 

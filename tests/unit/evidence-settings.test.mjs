@@ -91,3 +91,13 @@ test('requested comment and danmaku failures preserve status and missing gaps', 
     assert.equal(bundle[source].skippedBy, undefined);
   }
 });
+test('include.metadata=false only keeps identifiers; commentLimit=0 sends no comment request', async () => {
+  const f = fixture();
+  const { bundle } = await buildEvidence({
+    settings: enabled, include: { metadata: false }, limits: { commentLimit: 0 }, dependencies: f.dependencies,
+  });
+  assert.ok(!f.calls.includes('comments'));
+  assert.equal(bundle.comments.status, 'skipped');
+  assert.equal(bundle.comments.skippedBy, 'caller');
+  assert.deepEqual(Object.keys(bundle.video).sort(), ['aid', 'bvid', 'cid', 'durationMs', 'page', 'pageCount']);
+});
