@@ -53,3 +53,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
+
+      - name: verify registry
+        run: |
+          set -euo pipefail
+          V=$(node -p "require('./package.json').version")
+          for i in 1 2 3 4; do
+            LIVE=$(npm view "dsh-bilibili-bridge@$V" version 2>/dev/null || true)
+            if [ "$LIVE" = "$V" ]; then
+              echo "npm 上已可见 dsh-bilibili-bridge@$V"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::npm 上暂时看不到 $V：可能进入 Staged Packages 队列，需要维护者 2FA 批准（npm stage approve <stage-id> 或 npmjs.com 的 Staged Packages）"
+

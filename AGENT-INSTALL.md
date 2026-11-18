@@ -30,6 +30,10 @@ ls "$PROFILE_DIR" 2>/dev/null || echo "PROFILE_NOT_FOUND"
 ## 1A. 安装（插件管理器，推荐）
 
 ```bash
+# 已发布到 npm 时优先按包名安装：
+dsh plugin --profile "$PROFILE_NAME" add dsh-bilibili-bridge
+
+# 或者从 GitHub Release 的 tarball 安装：
 dsh plugin --profile "$PROFILE_NAME" add https://github.com/Si-xiyu/dsh-BiliBridge/releases/download/v0.1.2/dsh-bilibili-bridge-0.1.2.tgz
 ```
 

@@ -28,10 +28,15 @@ ASR Python、模型目录），留空表示自动探测；保存后下一次调�
 
 ## 3. 安装方式（三种，注意状态）
 
-### a. 插件市场 / `plugin_manager` 按包名安装 —— 维护者发布后可用
+### a. 插件市场 / `plugin_manager` 按包名安装 —— 已发布（0.1.2 起）
 
-当前包尚未发布到 registry，按包名安装会 404；发布步骤见 docs/release.md（需要维护者的 npm 凭据或 NPM_TOKEN secret）。发布后请在宿主里用插件管理器按包名
-`dsh-bilibili-bridge` 安装，profile 的 `dependencies` 与 `dsh.profile.bundles` 由插件管理器完成（待发布后补充）。
+0.1.2 起已发布到 npm。用插件管理器按包名安装：
+
+```bash
+dsh plugin --profile desktop add dsh-bilibili-bridge
+```
+
+`dependencies` 与 `dsh.profile.bundles` 由插件管理器写入。发布与 2FA 审批流程见 docs/release.md。
 不要在没有包的情况下照搬其它插件的命令。
 
 ### b. 从本仓库开发态链接安装（推荐给当前用户）
