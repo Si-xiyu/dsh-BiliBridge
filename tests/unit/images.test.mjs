@@ -25,7 +25,8 @@ test('纯文本模型不下载图片；有图片能力时才进入下载路径',
   let fetched = 0;
   globalThis.fetch = async () => {
     fetched += 1;
-    return new Response(Buffer.from([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } });
+    // 同上：Buffer body 在 Node 24.21 会被文本化，改用 Uint8Array。
+    return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } });
   };
   const exec = { agent: { options: { provider: 'p', model: 'm' } } };
   const attachments = { imageLimits: { maxImageBytes: 1024 }, saveImage: async () => ({ id: 'att-1' }) };

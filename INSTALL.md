@@ -1,7 +1,7 @@
 # 安装与自检
 
 面向第一次安装的用户。命令只使用真实存在的工具（`npm`、`pnpm`、`ln`、`mklink`、`brew`、`pip`、`xcode-select`、`swiftc`）。
-DSH 专有的安装动作若尚未验证，会明确写「由插件管理器完成（待发布后补充）」。
+DSH 专有的安装动作由插件管理器完成；未验证的写法会明确标注。
 
 ## 1. 前置
 
@@ -36,8 +36,9 @@ ASR Python、模型目录），留空表示自动探测；保存后下一次调�
 dsh plugin --profile desktop add dsh-bilibili-bridge
 ```
 
-`dependencies` 与 `dsh.profile.bundles` 由插件管理器写入。发布与 2FA 审批流程见 docs/release.md。
-不要在没有包的情况下照搬其它插件的命令。
+插件管理器通常会写入 profile 的 `dependencies` 与 `dsh.profile.bundles`；装完请确认 bundles 里含
+`dsh-bilibili-bridge`。发布与 2FA 审批流程见
+[维护者发布清单](https://github.com/Si-xiyu/dsh-BiliBridge/blob/main/docs/release.md)。
 
 ### b. 从本仓库开发态链接安装（推荐给当前用户）
 
@@ -118,7 +119,7 @@ pnpm add /Users/<你>/Code/dsh-BiliBridge/dsh-bilibili-bridge-0.1.2.tgz
 ```
 
 `npm install /path/to/dsh-bilibili-bridge-0.1.2.tgz` 语义相同。tarball 里有 `lib/`、`bin/`、
-`cordis.patch.yml`、README、INSTALL、CHANGELOG、LICENSE，**不含** `docs/` 与测试。
+`cordis.patch.yml`、README、INSTALL、AGENT-INSTALL、CHANGELOG、LICENSE，**不含** `docs/` 与测试。
 安装后仍需把 `dsh-bilibili-bridge` 加进 `dsh.profile.bundles`（由插件管理器完成时无需手工加），然后重启 DSH。tarball 是拷贝，升级必须重装。
 
 ## 4. 安装后验证
@@ -132,7 +133,7 @@ node bin/bili.mjs doctor --json   # 机器可读
 - **可选项**：`ffmpeg`、`asr`、`sharp`、`ocr`、`login`。缺失只标注、不阻断；`login` 未登录也算通过。
 - **退出码**：`0` 必需项全部通过；`1` 必需项失败或参数非法（抛错）；`2` 未知子命令（打印用法）。
 
-重启 DSH 后，新会话应看到 **27 个 `bilibili_*` 工具**；设置页「BiliBridge」显示版本、模块路径与工具数，可确认宿主加载的是哪一份代码。宿主重启验收仍待执行（见 CHANGELOG）。
+重启 DSH 后，新会话应看到 **27 个 `bilibili_*` 工具**；设置页「BiliBridge」显示版本、模块路径与工具数，可确认宿主加载的是哪一份代码。macOS 与 Windows 均已完成重启验收（27 工具、设置页 identity）。
 
 ## 5. 升级与重装
 

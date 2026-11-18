@@ -6,10 +6,11 @@
 
 - npm 账号对 `dsh-bilibili-bridge` 有发布权限。
 - 仓库 Settings → Secrets and variables → Actions 添加 `NPM_TOKEN`。
-  npm 只支持 **Granular Access Token**：Access Tokens → Generate New Token → Granular，
+  npm 已弃用 classic token，请使用 **Granular Access Token**：Access Tokens → Generate New Token → Granular，
   权限 Read and write，勾选 **Bypass two-factor authentication**（CI 必需），
   首次发布包范围选 All packages，之后收窄到 `dsh-bilibili-bridge`。
   也可以用本机 `npm login` 交互发布（支持 2FA）。
+  注意：bypass 2FA 只免除验证码，**不代表立即上线**；新包或暂存模式下仍需批准。
 - `package.json` 的 `private` 为 `false`，`publishConfig.access` 为 `public`。
 
 ## 当前状态
@@ -21,8 +22,11 @@
 
 ## 暂存发布与批准
 
-新包首次发布时 npm 会自动暂存；后续版本可能直接发布，也可能进入队列，以
-`npm view` 的结果为准。
+本次 0.1.2 是首次发布，实际观察到 npm 先创建 `0.0.0-stage` 占位并暂存 0.1.2。
+**不要假设所有发布都会自动暂存**：后续版本可能直接上线，也可能进入队列。判断方式：
+- `npm view dsh-bilibili-bridge version` 能查到目标版本 = 已上线；
+- `npm stage list`（npm ≥ 11.15，已登录）能看到 = 在暂存队列待批准；
+- 两边都看不到 = 发布可能失败，去查 workflow 日志。
 
 批准方式二选一：
 
@@ -43,7 +47,8 @@ npm view dsh-bilibili-bridge version            # 期望与 package.json 一致
 npm view dsh-bilibili-bridge dist.tarball
 ```
 
-如果仍显示 `0.0.0-stage` 或 404，说明还在队列里，需要批准，不是发布失败。
+如果 `npm view` 仍是 `0.0.0-stage` 或 404，先不要断定失败：可能是暂存待批准，
+也可能是真的没上传。用 `npm stage list` 区分；队列为空时检查 workflow 日志与 token 权限。
 
 ## 发布 0.1.2（当前版本）
 
@@ -55,8 +60,10 @@ npm view dsh-bilibili-bridge dist.tarball
 1. GitHub Actions（推荐，不需要本机 npm 登录）
    - Actions 网页的 Run workflow 只能选分支；要针对 tag 运行，用 GitHub CLI：
      `gh workflow run publish-npm.yml --ref v0.1.2`。
-   - 工作流会跑 `npm ci`、全量单测、tag/版本校验，再 `npm publish --access public`，
-     最后检查 registry；若进入暂存队列，会给出 warning 和批准提示。
+   - 工作流会跑 `npm ci`、全量单测、tag/版本校验，再 `npm publish --access public`。
+     **注意**：`--ref v0.1.2` 使用的是 tag 当时的 workflow；后来新增的 registry 检查
+     只在更新的提交里。要使用最新检查逻辑，需要对包含该步骤的提交打新 tag，
+     或发布后手动执行上面的 `npm view` / `npm stage list`。
 2. 本机发布
    ```bash
    git checkout v0.1.2
@@ -87,6 +94,6 @@ npm view dsh-bilibili-bridge dist.tarball
 
 ## 2027 迁移提示
 
-npm 计划从 2027-01 起禁止带 2FA bypass 的 granular token 直接 publish。
+npm 正在收紧带 2FA bypass 的 granular token 直接 publish 的能力，具体时间表以官方公告为准。
 届时需要改用 staged publishing（CI 暂存 + 维护者批准）或 Trusted Publishing（OIDC），
 本工作流会随那次迁移调整。

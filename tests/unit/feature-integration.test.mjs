@@ -37,7 +37,9 @@ test('eco extract skips images; enabling frames extracts the storyboard under th
   const f = await fixture(t, url => {
     if (url.pathname.endsWith('/view')) return Response.json({ code: 0, data: metadata });
     if (url.pathname.endsWith('/videoshot')) return Response.json({ code: 0, data: { image: ['https://i0.hdslb.com/sprite.jpg'], index: [0, 6, 12, 18, 24, 30, 36, 42, 48], img_x_len: 3, img_y_len: 3, img_x_size: 160, img_y_size: 90 } });
-    if (['/cover.jpg', '/sprite.jpg'].includes(url.pathname)) return new Response(jpeg, { headers: { 'content-type': 'image/jpeg' } });
+    if (['/cover.jpg', '/sprite.jpg'].includes(url.pathname)) // Node 24.21 的 Response 会把 Buffer body 按文本重新编码（字节会被替换），
+    // 用 Uint8Array 才是无损的二进制 body。
+    return new Response(new Uint8Array(jpeg), { headers: { 'content-type': 'image/jpeg' } });
     if (url.pathname === '/x/risk') return Response.json({ code: -352 });
     assert.fail('unexpected source request ' + url.pathname);
   });
