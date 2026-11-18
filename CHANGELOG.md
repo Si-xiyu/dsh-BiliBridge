@@ -1,5 +1,25 @@
 # 变更记录
 
+## 0.1.2（2026-11-18）
+
+npm 发布准备版本，运行时与 0.1.1 相同。
+
+### Added
+
+- `package.json` 去掉 `private`，增加 `publishConfig.access=public` 与 keywords。
+- `.github/workflows/publish-npm.yml`：手动发布到 npm；发布前跑全量单测，
+  并校验 HEAD 必须是 `v<version>` tag 指向的提交。
+- `docs/release.md`：维护者发布清单（Granular token、2FA bypass、发布后验证、回滚）。
+
+### Changed
+
+- INSTALL 的插件市场段落从“待发布”改为“维护者发布后可用”，并注明当前会 404。
+
+### 已知边界
+
+- 尚未实际发布 npm；需要 NPM_TOKEN secret 或本机 npm login。
+- 0.1.1 的 GitHub Release 产物与 0.1.2 运行时代码一致；npm 只发布 0.1.2。
+
 ## 0.1.1（2026-11-13）
 
 安装体验与 Windows 验收修复版本。

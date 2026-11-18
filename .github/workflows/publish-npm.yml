@@ -1,0 +1,55 @@
+name: publish-npm
+
+# 手动发布到 npm registry。需要仓库 secret NPM_TOKEN（npm Automation token，
+# 只对 dsh-bilibili-bridge 有发布权限）。没有 secret 时会在 preflight 明确失败。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: clean install
+        run: npm ci --no-audit --no-fund
+
+      - name: unit tests
+        run: node --test --test-isolation=none --test-concurrency=1 tests/unit/*.test.mjs
+
+      - name: verify tag and commit
+        run: |
+          set -euo pipefail
+          V=$(node -p "require('./package.json').version")
+          git fetch --tags --force
+          if ! git tag --points-at HEAD | grep -qx "v$V"; then
+            echo "::error::HEAD 不是 v$V 指向的提交；请用 workflow_dispatch 选择 tag v$V 对应的提交"
+            exit 1
+          fi
+          echo "tag v$V 指向当前 HEAD"
+
+      - name: preflight token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::缺少仓库 secret NPM_TOKEN；先在 GitHub 仓库 Settings → Secrets 配置"
+            exit 1
+          fi
+          node -e "const p=require('./package.json'); if (p.private) { console.error('package.json 仍为 private'); process.exit(1); } console.log('publishing', p.name, p.version)"
+
+      - name: publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

@@ -1,8 +1,8 @@
 {
   "name": "dsh-bilibili-bridge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -17,6 +17,16 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Si-xiyu/dsh-BiliBridge.git"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "bilibili",
+    "agent"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "node --test tests/unit/*.test.mjs",

@@ -28,9 +28,9 @@ ASR Python、模型目录），留空表示自动探测；保存后下一次调�
 
 ## 3. 安装方式（三种，注意状态）
 
-### a. 插件市场 / `plugin_manager` 按包名安装 —— **待发布**
+### a. 插件市场 / `plugin_manager` 按包名安装 —— 维护者发布后可用
 
-包还不在 registry，当前**没有**可执行的安装命令。发布后请在宿主里用插件管理器按包名
+当前包尚未发布到 registry，按包名安装会 404；发布步骤见 docs/release.md（需要维护者的 npm 凭据或 NPM_TOKEN secret）。发布后请在宿主里用插件管理器按包名
 `dsh-bilibili-bridge` 安装，profile 的 `dependencies` 与 `dsh.profile.bundles` 由插件管理器完成（待发布后补充）。
 不要在没有包的情况下照搬其它插件的命令。
 
@@ -97,7 +97,7 @@ dsh plugin --profile desktop add https://github.com/Si-xiyu/dsh-BiliBridge/relea
 
 ```bash
 cd ~/.dsh/profiles/desktop
-pnpm add /path/to/dsh-bilibili-bridge-0.1.1.tgz
+pnpm add /path/to/dsh-bilibili-bridge-0.1.2.tgz
 ```
 
 无论哪种方式，都要确认 `dsh.profile.bundles` 里有 `dsh-bilibili-bridge`（插件管理器会自动加；
@@ -107,12 +107,12 @@ pnpm add /path/to/dsh-bilibili-bridge-0.1.1.tgz
 
 ```bash
 cd /Users/<你>/Code/dsh-BiliBridge
-npm pack                          # 产出 dsh-bilibili-bridge-0.1.1.tgz
+npm pack                          # 产出 dsh-bilibili-bridge-0.1.2.tgz
 cd ~/.dsh/profiles/desktop
-pnpm add /Users/<你>/Code/dsh-BiliBridge/dsh-bilibili-bridge-0.1.1.tgz
+pnpm add /Users/<你>/Code/dsh-BiliBridge/dsh-bilibili-bridge-0.1.2.tgz
 ```
 
-`npm install /path/to/dsh-bilibili-bridge-0.1.1.tgz` 语义相同。tarball 里有 `lib/`、`bin/`、
+`npm install /path/to/dsh-bilibili-bridge-0.1.2.tgz` 语义相同。tarball 里有 `lib/`、`bin/`、
 `cordis.patch.yml`、README、INSTALL、CHANGELOG、LICENSE，**不含** `docs/` 与测试。
 安装后仍需把 `dsh-bilibili-bridge` 加进 `dsh.profile.bundles`（由插件管理器完成时无需手工加），然后重启 DSH。tarball 是拷贝，升级必须重装。
 
