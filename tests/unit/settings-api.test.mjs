@@ -63,8 +63,8 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
   const routes = [];
   registerSettingsRoutes({
     inject(names, callback) {
-      assert.deepEqual(names, ['webServer', 'loader']);
-      callback({ webServer: { register(route) { routes.push(route); return () => {}; } } });
+      assert.deepEqual(names, ['webServer', 'loader', 'connection']);
+      callback({ webServer: { register(route) { routes.push(route); return () => {}; } }, connection: { requestRejection: () => undefined } });
     },
   }, { account: () => { throw new Error('secret'); } });
 
@@ -86,12 +86,44 @@ test('懒注册 exact 路由：账号读取失败不炸连接，非 GET 回 405'
   assert.equal(code, 405);
 });
 
+test('DSH connection rejection runs before route business logic', async () => {
+  const routes = [];
+  let refusal = 403;
+  let accountReads = 0;
+  registerSettingsRoutes({
+    inject(names, callback) {
+      assert.deepEqual(names, ['webServer', 'loader', 'connection']);
+      callback({
+        webServer: { register(route) { routes.push(route); return () => {}; } },
+        connection: { requestRejection() { return refusal; } },
+      });
+    },
+  }, { account: () => { accountReads += 1; throw new Error('should not run'); } });
+
+  const invoke = async (handler, req = { method: 'GET' }) => {
+    let code;
+    let body;
+    await handler(req, { writeHead(value) { code = value; }, end(value) { body = JSON.parse(value); } });
+    return { code, body };
+  };
+
+  assert.deepEqual(await invoke(routes[0].handler), { code: 403, body: { ok: false, error: 'FORBIDDEN' } });
+  refusal = 401;
+  assert.deepEqual(await invoke(routes[1].handler, { method: 'POST' }), { code: 401, body: { ok: false, error: 'UNAUTHORIZED' } });
+  assert.equal(accountReads, 0, '被拒绝的请求不应进入业务逻辑');
+
+  refusal = undefined;
+  const allowed = await invoke(routes[0].handler);
+  assert.equal(allowed.code, 200);
+  assert.equal(allowed.body.account.loggedIn, false);
+});
+
 const TRUST = { host: '127.0.0.1:1983', origin: 'http://127.0.0.1:1983' };
 
 function operationRoutes(readers = {}) {
   const routes = new Map();
   registerSettingsRoutes({ inject(_names, callback) {
-    callback({ webServer: { register(route) { routes.set(route.path.split('/api/')[1], route.handler); return () => {}; } } });
+    callback({ webServer: { register(route) { routes.set(route.path.split('/api/')[1], route.handler); return () => {}; } }, connection: { requestRejection: () => undefined } });
   } }, readers);
   return routes;
 }
@@ -212,7 +244,7 @@ function harness(current, { corrupt = false, missing = false } = {}, extraReader
   const routes = [];
   const writes = [];
   registerSettingsRoutes(
-    { inject(names, callback) { callback({ webServer: { register(route) { routes.push(route); return () => {}; } } }); } },
+    { inject(names, callback) { callback({ webServer: { register(route) { routes.push(route); return () => {}; } }, connection: { requestRejection: () => undefined } }); } },
     {
       ...extraReaders,
       readFile: async () => {
