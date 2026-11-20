@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "minimumVideoCount": 30,
+  "seed": true,
+  "updatedAt": "2026-11-19",
+  "note": "M2 种子集：M1 用例 + 搜索探测到的中文字幕视频；m3Subset 是 6 个 held-out 视频×2 窗口的最小对照，30 个分类全集仍待补。subtitle 状态来自 2026-11-19 带登录只读探测。",
+  "videos": [
+    {
+      "bvid": "BV19px46aEo8",
+      "category": "game-mv",
+      "durationSec": 134,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 41
+      },
+      "notes": "M1 E1/E2"
+    },
+    {
+      "bvid": "BV1i24P6rEmt",
+      "category": "screen-recording",
+      "durationSec": 200,
+      "subtitle": {
+        "status": "empty",
+        "lan": null,
+        "isAi": null,
+        "cues": 0
+      },
+      "notes": "M1 I1/I2；无平台字幕"
+    },
+    {
+      "bvid": "BV1KDNA6eEgr",
+      "category": "explainer",
+      "durationSec": 352,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 190
+      },
+      "notes": "M3 CER 主样本；AI 字幕参考"
+    },
+    {
+      "bvid": "BV1REx46NEc4",
+      "category": "long-tutorial",
+      "durationSec": 3041,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 800,
+        "total": 1503
+      },
+      "notes": "长视频；M3 CER 补充样本"
+    },
+    {
+      "bvid": "BV1VZWc6dECG",
+      "category": "long-tutorial",
+      "durationSec": 3297,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 800,
+        "total": 1576
+      },
+      "notes": "字幕分页 E3"
+    },
+    {
+      "bvid": "BV1GJ411x7h7",
+      "category": "music-mv",
+      "durationSec": 213,
+      "subtitle": {
+        "status": "ok",
+        "lan": "zh-CN",
+        "isAi": false,
+        "cues": 47
+      },
+      "notes": "官方多语言字幕；非口播，适合字幕/渲染"
+    },
+    {
+      "bvid": "BV1pTx76QE8J",
+      "category": "no-subtitle-speech",
+      "durationSec": 931,
+      "subtitle": {
+        "status": "empty",
+        "lan": null,
+        "isAi": null,
+        "cues": 0
+      },
+      "notes": "M1 R1；ASR 无参考，不用于 CER"
+    },
+    {
+      "bvid": "BV161nZ6JE6b",
+      "category": "tutorial-short",
+      "durationSec": 341,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 192
+      },
+      "notes": "M3 候选；搜索探测"
+    },
+    {
+      "bvid": "BV17YsJ6UEnW",
+      "category": "tutorial-claude",
+      "durationSec": 1005,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 445
+      },
+      "notes": "M3 候选；Claude Code 教程"
+    },
+    {
+      "bvid": "BV1KjoxBoEQJ",
+      "category": "tutorial-official-zh",
+      "durationSec": 494,
+      "subtitle": {
+        "status": "ok",
+        "lan": "zh-Hans",
+        "isAi": false,
+        "cues": 290
+      },
+      "notes": "M3 候选；官方人工字幕"
+    },
+    {
+      "bvid": "BV154426xEha",
+      "category": "tutorial-ai-coding",
+      "durationSec": 1495,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 685
+      },
+      "notes": "M3 候选；AI 编程流程"
+    },
+    {
+      "bvid": "BV1VkgK6NEZS",
+      "category": "tutorial-dsh",
+      "durationSec": 993,
+      "subtitle": {
+        "status": "ok",
+        "lan": "ai-zh",
+        "isAi": true,
+        "cues": 397
+      },
+      "notes": "M3 held-out；DSH 教程，避免复用 BV1KDNA 的调参样本"
+    }
+  ],
+  "categoryShortfalls": [
+    "ppt-code",
+    "vertical",
+    "official-human-speech"
+  ],
+  "notes": [
+    "BV1REx46NEc4 与 BV1VZWc6dECG 已超过 30 分钟，长视频类已有样本"
+  ],
+  "m3Subset": {
+    "note": "M3 最小对照：6 个 held-out 视频 × 2 个 60s 窗口；BV1KDNA6eEgr 已在 prompt 实验中用过，作为 prior/smoke，不混入 held-out 汇总。",
+    "windows": [
+      60,
+      180
+    ],
+    "durationSec": 60,
+    "minReferenceCues": 5,
+    "minReferenceChars": 100,
+    "referenceTypes": [
+      "ai-zh",
+      "zh-Hans"
+    ],
+    "bvid": [
+      "BV161nZ6JE6b",
+      "BV1KjoxBoEQJ",
+      "BV154426xEha",
+      "BV1REx46NEc4",
+      "BV1VkgK6NEZS",
+      "BV19px46aEo8"
+    ],
+    "prior": [
+      "BV1KDNA6eEgr"
+    ]
+  }
+}

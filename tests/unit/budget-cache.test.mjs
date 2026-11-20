@@ -59,7 +59,8 @@ test('budget and persistent caches (offline)', async (t) => {
       assert.equal(snapshot({ bundleId }).remainingSeconds, 0);
       assert.equal(snapshot({ bundleId }).rounds, 2);
       assert.throws(() => charge({ bundleId, audioSeconds: 0 }), { code: 'BUDGET_EXCEEDED' });
-      for (const difference of [{ cid: 2 }, { model: 'base' }, { language: 'zh' }, { startSeconds: 1 }, { durationSeconds: 20 }]) {
+      for (const difference of [{ cid: 2 }, { model: 'base' }, { language: 'zh' }, { startSeconds: 1 }, { durationSeconds: 20 },
+        { decoder: 2 }, { decoder: 3 }, { hints: { prompt: 'a' } }, { hints: { prompt: 'b' } }]) {
         assert.equal(await readTranscribeCache({ ...key, ...difference }), null);
       }
       const asrDir = join(dir, 'cache', 'asr');

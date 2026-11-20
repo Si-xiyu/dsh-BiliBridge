@@ -22,7 +22,8 @@ asr_worker.py —— 用 faster-whisper 把一段音频转成带时间戳的段�
   "duration_sec": 88.4,
   "elapsed_sec": 12.3,
   "confidence": {"avg_logprob": -0.42, "low_confidence_ratio": 0.08},
-  "segments": [{"start": 0.0, "end": 2.4, "text": "..."}]
+  "segments": [{"start": 0.0, "end": 2.4, "text": "...", "avg_logprob": -0.3,
+                "compression_ratio": 1.4, "no_speech_prob": 0.01, "low_confidence": false}]
 }
 """
 import argparse
@@ -70,6 +71,78 @@ def load_wav_16k_mono(path):
         return None
     return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
+ZH_GUIDE = '以下是普通话的句子，用简体中文书写。'
+# 段落级低置信判据：与 faster-whisper 默认的回退阈值一致。
+LOW_LOGPROB = -1.0
+HIGH_COMPRESSION = 2.4
+HIGH_NO_SPEECH = 0.6
+
+
+def decode_options(language, prompt=None, hotwords=None):
+    """
+    转写参数（纯函数，便于单测）。
+
+    - 默认保留 condition_on_previous_text（不设置该字段）。
+      A3 的 False 在 M3 held-out 上没有净收益（0.1518 vs 0.1486），暂不默认启用。
+    - initial_prompt：只作用于第一个 30s 窗口；中文默认给简体引导句。
+    - hotwords：每个窗口都会带上，用来放标题/领域词这类需要全程生效的偏置。
+    """
+    options = {
+        'language': None if language in ('', 'auto') else language,
+        'vad_filter': True,
+        'beam_size': 5,
+    }
+    initial = prompt if isinstance(prompt, str) and prompt.strip() else (ZH_GUIDE if language == 'zh' else None)
+    if initial:
+        options['initial_prompt'] = initial
+    if isinstance(hotwords, str) and hotwords.strip():
+        options['hotwords'] = hotwords.strip()
+    return options
+
+
+def is_low_confidence(avg_logprob, compression_ratio, no_speech_prob):
+    return (avg_logprob is not None and avg_logprob < LOW_LOGPROB) or \
+        (compression_ratio is not None and compression_ratio > HIGH_COMPRESSION) or \
+        (no_speech_prob is not None and no_speech_prob > HIGH_NO_SPEECH)
+
+
+def run_transcription(model, audio_input, language, prompt=None, hotwords=None):
+    """worker 与 daemon 共用：转写并整理成统一载荷（不含 model / elapsed）。"""
+    segments_iter, info = model.transcribe(audio_input, **decode_options(language, prompt, hotwords))
+    segments = []
+    logprobs = []
+    low = 0
+    for seg in segments_iter:
+        text = (seg.text or '').strip()
+        avg = float(seg.avg_logprob)
+        ratio = float(getattr(seg, 'compression_ratio', 0.0) or 0.0)
+        no_speech = float(getattr(seg, 'no_speech_prob', 0.0) or 0.0)
+        logprobs.append(avg)
+        if no_speech > HIGH_NO_SPEECH:
+            low += 1
+        if not text:
+            continue
+        segments.append({
+            'start': round(float(seg.start), 3),
+            'end': round(float(seg.end), 3),
+            'text': text,
+            'avg_logprob': round(avg, 4),
+            'compression_ratio': round(ratio, 3),
+            'no_speech_prob': round(no_speech, 4),
+            'low_confidence': bool(is_low_confidence(avg, ratio, no_speech)),
+        })
+    return {
+        'engine': 'faster-whisper',
+        'language': getattr(info, 'language', language),
+        'language_probability': round(float(getattr(info, 'language_probability', 0.0)), 4),
+        'duration_sec': round(float(getattr(info, 'duration', 0.0)), 3),
+        'confidence': {
+            'avg_logprob': round(sum(logprobs) / len(logprobs), 4) if logprobs else None,
+            'low_confidence_ratio': round(low / len(logprobs), 4) if logprobs else None,
+        },
+        'segments': segments,
+    }
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -78,6 +151,8 @@ def main() -> int:
     ap.add_argument('--model', default='small')
     ap.add_argument('--model-dir', default='')
     ap.add_argument('--language', default='zh', help='zh / en / auto')
+    ap.add_argument('--prompt', default='', help='首窗口提示；中文缺省为简体引导句')
+    ap.add_argument('--hotwords', default='', help='每个窗口都生效的领域词')
     args = ap.parse_args()
 
     if args.model_dir:
@@ -104,48 +179,12 @@ def main() -> int:
     # 注意不能写 `decoded or args.audio`：numpy 数组的真值判断会抛异常。
     audio_input = decoded if decoded is not None else args.audio
 
-    # whisper 对中文经常输出繁体；给一句简体提示能显著减少这种偏移。
-    extra = {}
-    if args.language == 'zh':
-        extra['initial_prompt'] = '以下是普通话的句子，用简体中文书写。'
-
-    segments_iter, info = model.transcribe(
-        audio_input,
-        language=None if args.language in ('', 'auto') else args.language,
-        vad_filter=True,
-        beam_size=5,
-        **extra,
-    )
-
-    segments = []
-    logprobs = []
-    low = 0
-    for seg in segments_iter:
-        text = (seg.text or '').strip()
-        logprobs.append(float(seg.avg_logprob))
-        if getattr(seg, 'no_speech_prob', 0.0) and seg.no_speech_prob > 0.6:
-            low += 1
-        if not text:
-            continue
-        segments.append({
-            'start': round(float(seg.start), 3),
-            'end': round(float(seg.end), 3),
-            'text': text,
-        })
-
     payload = {
-        'engine': 'faster-whisper',
         'model': args.model,
-        'language': getattr(info, 'language', args.language),
-        'language_probability': round(float(getattr(info, 'language_probability', 0.0)), 4),
-        'duration_sec': round(float(getattr(info, 'duration', 0.0)), 3),
-        'elapsed_sec': round(time.time() - started, 2),
-        'confidence': {
-            'avg_logprob': round(sum(logprobs) / len(logprobs), 4) if logprobs else None,
-            'low_confidence_ratio': round(low / len(logprobs), 4) if logprobs else None,
-        },
-        'segments': segments,
+        **run_transcription(model, audio_input, args.language, args.prompt or None, args.hotwords or None),
     }
+    payload['elapsed_sec'] = round(time.time() - started, 2)
+    segments = payload['segments']
 
     with open(args.out, 'w', encoding='utf-8') as fh:
         json.dump(payload, fh, ensure_ascii=False)

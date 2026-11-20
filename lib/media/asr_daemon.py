@@ -9,7 +9,7 @@ import queue
 import sys
 import threading
 import time
-from asr_worker import load_wav_16k_mono
+from asr_worker import load_wav_16k_mono, run_transcription
 
 try:
     sys.stdin.reconfigure(encoding='utf-8', errors='replace')
@@ -48,49 +48,12 @@ class Service:
         # 注意不能写 `decoded or request['wav']`：numpy 数组的真值判断会抛异常。
         audio_input = decoded if decoded is not None else request['wav']
 
-        # whisper 对中文经常输出繁体；给一句简体提示能显著减少这种偏移。
-        extra = {}
-        if language == 'zh':
-            extra['initial_prompt'] = '以下是普通话的句子，用简体中文书写。'
-
-        segments_iter, info = model.transcribe(
-            audio_input,
-            language=None if language in ('', 'auto') else language,
-            vad_filter=True,
-            beam_size=5,
-            **extra,
-        )
-
-        segments = []
-        logprobs = []
-        low = 0
-        for seg in segments_iter:
-            text = (seg.text or '').strip()
-            logprobs.append(float(seg.avg_logprob))
-            if getattr(seg, 'no_speech_prob', 0.0) and seg.no_speech_prob > 0.6:
-                low += 1
-            if not text:
-                continue
-            segments.append({
-                'start': round(float(seg.start), 3),
-                'end': round(float(seg.end), 3),
-                'text': text,
-            })
-
-        payload = {
-            'engine': 'faster-whisper',
-            'model': model_name,
-            'language': getattr(info, 'language', language),
-            'language_probability': round(float(getattr(info, 'language_probability', 0.0)), 4),
-            'duration_sec': round(float(getattr(info, 'duration', 0.0)), 3),
-            'elapsed_sec': round(time.time() - started, 2),
-            'confidence': {
-                'avg_logprob': round(sum(logprobs) / len(logprobs), 4) if logprobs else None,
-                'low_confidence_ratio': round(low / len(logprobs), 4) if logprobs else None,
-            },
-            'segments': segments,
-        }
-
+        prompt = request.get('prompt')
+        hotwords = request.get('hotwords')
+        if prompt is not None and not isinstance(prompt, str) or hotwords is not None and not isinstance(hotwords, str):
+            raise ValueError('prompt and hotwords must be strings')
+        payload = {'model': model_name, **run_transcription(model, audio_input, language, prompt, hotwords)}
+        payload['elapsed_sec'] = round(time.time() - started, 2)
         return payload
 
 
